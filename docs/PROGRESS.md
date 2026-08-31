@@ -84,3 +84,5 @@ reproduced here; the reconciled counts are the record.
   until the PRD's own backlog reaches it (there is no V-item for it yet,
   unlike Countertop's C-045) — this project may not need a deploy target at
   all if it never leaves demo/portfolio use.
+
+V-001 committed at acd82b4.
