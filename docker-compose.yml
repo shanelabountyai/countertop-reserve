@@ -1,0 +1,18 @@
+# Optional. The convention (~/.claude/CLAUDE.md, "Tests never point at a
+# remote database") is a local Postgres install — `brew install postgresql@17`
+# — and that is what .env.test/.env.local point at. This file exists for a
+# machine without one; 5436 keeps clear of Countertop's 5435 and bookable's
+# 5434.
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: reserve
+      POSTGRES_PASSWORD: reserve
+      POSTGRES_DB: reserve_dev
+    ports:
+      - "5436:5432"
+    volumes:
+      - reserve-pg:/var/lib/postgresql/data
+volumes:
+  reserve-pg:

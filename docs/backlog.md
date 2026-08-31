@@ -12,7 +12,7 @@ npm run gate    # lint, typecheck, build, e2e, unit — in that order
 
 ## Phase 1 — pure logic, tested before any UI or database exists
 
-- [ ] **V-001** — Monorepo scaffold, Postgres wiring, Playwright + axe, CI (TZ×2, migrate-from-scratch, drift check), the four docs. Same shape as Countertop's C-001; port **3500**, add the row to the shared port table in `~/.claude/CLAUDE.md` in this commit.
+- [x] **V-001** — Monorepo scaffold, Postgres wiring, Playwright + axe, CI (TZ×2, migrate-from-scratch, drift check), the four docs. Same shape as Countertop's C-001; port **3500**, add the row to the shared port table in `~/.claude/CLAUDE.md` in this commit.
 - [ ] **V-002** — Floor plan model + availability engine *(P0-1, P0-2)* — `packages/core`, pure, TDD from the hand-calculated fixture matrix: the last table, a combination-only fit, a pacing-blocked bucket with tables free, a blackout date, a party larger than the largest legal combination, a turn that overhangs closing. The engine returns *why* nothing is available, not just an empty list.
 
 ## Phase 2 — the reservation as a persisted object

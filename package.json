@@ -1,0 +1,47 @@
+{
+  "name": "countertop-reserve",
+  "version": "0.0.1",
+  "private": true,
+  "engines": { "node": ">=24" },
+  "description": "Table reservations with SMS confirm/change — Claude Code learning build #6. Start with START-HERE.md.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "preflight": "if [ -x \"$HOME/.claude/bin/swapcheck\" ]; then \"$HOME/.claude/bin/swapcheck\" --quiet; fi",
+    "predev": "npm run preflight",
+    "pretest:e2e": "npm run preflight",
+    "dev": "npm run dev:test",
+    "dev:test": "dotenv -e .env.test -e .env.local -- npm run dev -w apps/web",
+    "build": "npm run build -w apps/web",
+    "build:test": "dotenv -e .env.test -e .env.local -- npm run build -w apps/web",
+    "start:test": "dotenv -e .env.test -e .env.local -- npm run start -w apps/web",
+    "e2e:server": "npm run build:test && npm run start:test",
+    "test": "dotenv -e .env.test -e .env.local -- vitest run",
+    "test:watch": "dotenv -e .env.test -e .env.local -- vitest",
+    "test:e2e": "dotenv -e .env.test -e .env.local -- npm run test:e2e -w apps/web",
+    "gate": "npm run lint && npm run typecheck && npm test && npm run build:test && PORT=3500 npm run test:e2e",
+    "lint": "eslint . && npm run lint -w apps/web",
+    "typecheck": "tsc --noEmit && npm run typecheck -w apps/web",
+    "db:migrate:dev": "dotenv -e .env.local -- npm run migrate:deploy -w packages/db",
+    "db:migrate:test": "dotenv -e .env.test -- npm run migrate:deploy -w packages/db",
+    "db:migrate:all": "npm run db:migrate:test && npm run db:migrate:dev",
+    "db:status:dev": "dotenv -e .env.local -- npm run migrate:status -w packages/db",
+    "db:status:test": "dotenv -e .env.test -- npm run migrate:status -w packages/db",
+    "db:status": "npm run db:status:test && npm run db:status:dev",
+    "db:reset:test": "dropdb --if-exists reserve_test && createdb reserve_test && npm run db:migrate:test",
+    "db:generate": "prisma generate --schema packages/db/prisma/schema.prisma",
+    "postinstall": "npm run db:generate"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.21.0",
+    "dotenv-cli": "^11.0.0",
+    "eslint": "^9",
+    "pg": "^8.23.0",
+    "tsx": "^4.23.12",
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.67.0",
+    "vitest": "^3.2.4"
+  }
+}

@@ -1,0 +1,39 @@
+// Countertop Reserve — data model. V-001 wires the generator and datasource
+// only; the entities land in V-003, after the schema-review pause
+// START-HERE.md's loop calls for.
+//
+// RULES THIS FILE WILL OBEY (CLAUDE.md, "Database rules"):
+//
+//  * The allocation constraint is a unique index on (table, turn window) —
+//    concurrent bookings contend on the constraint, not on check-then-write.
+//  * The idempotency key has a unique constraint. The disabled submit button
+//    is UX; the constraint is the mechanism.
+//  * Reservation and message tables carry COPIED data as columns — the
+//    snapshot rule (CLAUDE.md) extends to rendered message text, not just
+//    guest/table facts. FKs back to the floor plan or templates, if kept for
+//    analytics, are onDelete: Restrict and never read for display.
+//  * Instants are @db.Timestamptz(3). The business day / service period is a
+//    restaurant-timezone string, never a Postgres `date` coerced through the
+//    process timezone.
+//
+// WHAT PRISMA CANNOT EXPRESS, AND SO LIVES IN A HAND-WRITTEN MIGRATION:
+//   1. The append-only trigger on the reservation event log (undo writes a
+//      logged revert event; it never deletes).
+//
+// NEVER `prisma db push`. Never edit an applied migration.
+// (`prisma migrate dev --create-only`, then edit.)
+
+generator client {
+  provider = "prisma-client-js"
+  // NO custom `output`. A client generated outside node_modules is imported
+  // by relative path, which Next's `serverExternalPackages` cannot name —
+  // Turbopack then bundles it, and a bundled Prisma client cannot find its
+  // own query engine at deploy time. Countertop paid for this at C-045;
+  // inherited as a lesson here, not rediscovered.
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
