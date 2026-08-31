@@ -44,10 +44,7 @@ portfolio-facing version of the same history.
   suite twice (`TZ=UTC` and `TZ=Pacific/Kiritimati`), a production build step
   of its own (Countertop only added this at C-024, after two build-only
   failures slipped past a green `tsc`/ESLint/unit gate — built in from the
-  start here), then the e2e leg on 3500. No self-hosted runner and no
-  billing-block workaround: this repo is private and GitHub-hosted CI is
-  untested against that yet, so V-001's CI has not been proven green on a
-  push — see Decided, below.
+  start here), then the e2e leg on 3500.
 - Local databases `reserve_dev` / `reserve_test` on the brew-managed
   Postgres cluster, with `.env.local` / `.env.test` (both gitignored) wired
   through the `dotenv -e .env.test -e .env.local` first-file-wins pattern,
@@ -68,18 +65,28 @@ reproduced here; the reconciled counts are the record.
   known-working template adapted for this project's names and port, not a
   fresh scaffold re-litigating decisions Countertop already made and tested.
 - **Skipped the pre-push hook and `ci-local.sh`.** Countertop added those at
-  C-033/C-035, well after its own scaffold, to work around a GitHub Actions
-  billing block on private repos. This repo hasn't hit that block yet (untested
-  — see Left behind) and CLAUDE.md's gate command covers the same ground
-  locally; add the hook if and when this repo needs the same workaround.
+  C-033/C-035 to work around a GitHub Actions billing block on private
+  repos. This repo hit an *account-level* billing failure on its first push
+  (see below) and went public instead, which is the cheaper fix while there
+  is no self-hosted runner's exposure to weigh against it — CLAUDE.md's gate
+  command covers the same ground locally in the meantime.
 - **No `STAFF_PASSCODE` / staff-auth scaffolding.** Countertop's C-037 added
   that once a `/kitchen` route existed to protect. This project's equivalent
   (the host floor view) doesn't exist until V-010 — nothing to gate yet.
+- **Repo made public, same day as creation.** The first CI push (private)
+  failed with a GitHub billing annotation — "recent account payments have
+  failed or your spending limit needs to be increased" — an account-level
+  payment problem, not a code or config defect (local `npm run gate` had
+  already passed clean before this push). Made public rather than waiting on
+  a billing fix, same lever Countertop used at C-044: public repos get free
+  GitHub-hosted Actions minutes regardless of the payment method's state.
+  Unlike Countertop, there is no self-hosted runner in this repo to worry
+  about deregistering — V-001 never built one, so there was nothing for
+  going public to make unsafe. Re-run via `workflow_dispatch` after the
+  flip: green — lint, typecheck, unit ×2 timezones, drift check, build,
+  e2e 2/2.
 
 **Left behind:**
-- **CI has not been watched green on a push.** The first push of this
-  scaffold needs `gh run watch` before the next session starts, same as
-  every Countertop item — not skipped, just not yet done as of this entry.
 - **No `.env.production.local` / deploy story.** Deployment is out of scope
   until the PRD's own backlog reaches it (there is no V-item for it yet,
   unlike Countertop's C-045) — this project may not need a deploy target at
