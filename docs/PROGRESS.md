@@ -537,3 +537,5 @@ V-007 committed at a6593a5.
   the milliseconds between can still queue a reminder.
 - **Deploy note:** the deployed environment needs `CRON_SECRET` and a
   scheduler hitting `/api/cron/sweep` every few minutes.
+
+V-008 committed at 1153370.
