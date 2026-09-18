@@ -146,3 +146,5 @@ V-001 committed at acd82b4.
 - No floor-plan validation (for example, a combination naming an unknown
   table). V-003's foreign keys enforce it at the data layer.
 - No DST-transition-date fixture (`ponytail:` note in `time.ts`).
+
+V-002 committed at 448f0a0.
