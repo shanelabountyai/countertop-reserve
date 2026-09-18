@@ -254,3 +254,5 @@ V-003 committed at 2d136c8.
   lifecycle only restricts that edge to `system`.
 - Seating a released guest who shows up anyway is a walk-in (new
   allocation), not an edge out of `released`. V-010 builds that.
+
+V-004 committed at 4a38ff5.
