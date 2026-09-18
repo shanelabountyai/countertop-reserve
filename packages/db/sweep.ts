@@ -8,7 +8,7 @@
 //   2. Release notices. A SEPARATE pass over released reservations with no
 //      notice yet: the inventory decision never waits on (or rolls back
 //      with) a message, and a crash between the two passes heals on the
-//      next sweep. Quiet hours (V-009) defer the send, never the release.
+//      next sweep. Quiet hours defer the send (in dispatch), never the release.
 //   3. Reminders, one per reservation.
 //   4. Dispatch everything queued — confirmations and inbound replies too.
 //
@@ -29,6 +29,7 @@ import {
   transition,
   whenSlots,
   type MessageKind,
+  type SendPolicy,
   type Status,
   type SweepPolicy,
   type Templates,
@@ -39,6 +40,7 @@ import { dispatchQueued, type MessageProvider } from './messages';
 export type SweepConfig = {
   restaurant: string;
   timezone: string;
+  send?: SendPolicy;
   /** The manage link is `${manageBaseUrl}/${token}`. */
   manageBaseUrl: string;
   bookUrl: string;
@@ -57,7 +59,7 @@ export async function sweep(provider: MessageProvider, config: SweepConfig, now:
   const released = p.releaseLead === 0 ? [] : await releaseDue(within(p.releaseLead, p.sameDayReleaseLead), config, now, p);
   const notices = await queue('released', [RELEASED], within(p.releaseLead, p.sameDayReleaseLead), config, now, () => true);
   const reminders = await queue('reminder', UPCOMING, within(p.reminderLead, p.lateReminderLead), config, now, (r) => shouldRemind(toRow(r), now, p));
-  const sent = await dispatchQueued(provider, now);
+  const sent = await dispatchQueued(provider, now, config);
   return { released, notices, reminders, sent: sent.length };
 }
 
@@ -85,9 +87,9 @@ async function releaseDue(horizon: Date, config: SweepConfig, now: Date, p: Swee
 
 /**
  * Queues one `kind` message for each reservation in `statuses`, starting
- * before `horizon`, that `due` picks and that has none yet. A number that
- * texted STOP is skipped here; V-009 adds the send-time check that also
- * covers rows already queued.
+ * before `horizon`, that `due` picks, that consented to texts, and that has
+ * none yet. A number that texted STOP is skipped here too; dispatch checks
+ * again at send time, which covers rows queued before the STOP.
  *
  * ponytail: read-then-insert, unlocked. A guest who cancels in the
  * milliseconds between can still be queued a reminder; move the status
@@ -105,6 +107,7 @@ async function queue(
     SELECT r.* FROM "Reservation" r
     WHERE r.status = ANY(${[...statuses]}::text[]) AND r."startAt" > ${now} AND r."startAt" <= ${horizon}
       AND NOT EXISTS (SELECT 1 FROM "OutboundMessage" m WHERE m."reservationId" = r.id AND m.kind = ${kind})
+      AND r."smsConsent" IS NOT NULL
       AND NOT EXISTS (SELECT 1 FROM "SmsOptOut" o WHERE o.phone = r."guestPhone")
     ORDER BY r."startAt", r.id`;
   const template = (config.templates ?? DEFAULT_TEMPLATES)[kind];

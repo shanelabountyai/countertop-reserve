@@ -105,6 +105,10 @@ model Reservation {
   statusChangedAt DateTime @db.Timestamptz(3)
   /// 128 random bits, base64url. The manage link's only credential (P0-5).
   manageToken     String   @unique
+  /// The consent wording the guest agreed to, verbatim (P0-8) — the text,
+  /// not a boolean, so a later wording change can't rewrite what they saw.
+  /// Null = no consent: no reservation-owned text is ever queued.
+  smsConsent      String?
 
   holds    TableHold[]
   events   ReservationEvent[]

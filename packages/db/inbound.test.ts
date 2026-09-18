@@ -2,12 +2,14 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { plusMs, zonedTimeToInstant, type Schedule } from '@reserve/core';
 import { prisma } from './index';
 import { handleInbound, parseInboundPayload, signBody, verifySignature, type InboundConfig } from './inbound';
+import { dispatchQueued, mockProvider } from './messages';
 import { changeReservation, placeReservation, type PlaceRequest, type PlacementConfig } from './placement';
 import { resetDatabase } from './testing/index';
 
 // Friday 2026-10-02, America/Los_Angeles. Dinner 17:00–22:00, `now` = noon.
 const DAY = '2026-10-02';
 const TZ = 'America/Los_Angeles';
+const CONSENT = 'Text me about this reservation. Reply STOP to opt out.';
 const NOW = zonedTimeToInstant(DAY, 12 * 60, TZ);
 const at = (h: number, m = 0, day = DAY) => zonedTimeToInstant(day, h * 60 + m, TZ);
 const PHONE = '+15035550100';
@@ -34,7 +36,7 @@ const inbound: InboundConfig = {
 let n = 0;
 async function book(over: Partial<PlaceRequest> = {}) {
   const res = await placeReservation(
-    { idempotencyKey: `key-${(n += 1)}`, day: DAY, startAt: at(19), partySize: 2, guestName: 'Dana Reyes', guestPhone: PHONE, source: 'guest_web', now: NOW, ...over },
+    { idempotencyKey: `key-${(n += 1)}`, day: DAY, startAt: at(19), partySize: 2, guestName: 'Dana Reyes', guestPhone: PHONE, source: 'guest_web', smsConsent: CONSENT, now: NOW, ...over },
     placement,
   );
   if (!res.ok) throw new Error(res.reason);
@@ -299,5 +301,47 @@ describe('a change is a re-allocation (P0-6)', () => {
     const holds = await prisma.tableHold.findMany({ where: { reservationId: r.id } });
     expect(holds).toHaveLength(1);
     expect(holds[0]!.startAt).toEqual(moved.ok ? at(19) : at(17));
+  });
+});
+
+describe('send-time compliance (P0-8)', () => {
+  const dispatch = (now = NOW) => {
+    const { provider, sent } = mockProvider();
+    return dispatchQueued(provider, now, { timezone: TZ }).then(() => sent);
+  };
+  const byKind = async () => Object.fromEntries((await prisma.outboundMessage.findMany()).map((m) => [m.kind, m]));
+
+  it('STOP: everything already queued, owned or reply, is dropped at send time — only the acknowledgement goes', async () => {
+    await book(); // confirmation queued
+    await text('C'); // `confirmed` reply queued
+    await text('STOP');
+    const sent = await dispatch();
+    expect(sent.map((m) => m.body)).toEqual([expect.stringMatching(/opted out/)]);
+    const k = await byKind();
+    expect(k.confirmation).toMatchObject({ status: 'failed', failureReason: 'opted_out' });
+    expect(k.confirmed).toMatchObject({ status: 'failed', failureReason: 'opted_out' });
+    expect(await status((await prisma.reservation.findFirstOrThrow()).id)).toBe('confirmed'); // opting out is not cancelling
+  });
+
+  it('a reply to a text at 23:00 is not held for quiet hours — the guest just wrote to us', async () => {
+    await text('HELP', { now: at(23) });
+    expect(await dispatch(at(23))).toHaveLength(1);
+  });
+
+  it('the sixth text of the day to one number is dropped and logged; STOP is still acknowledged', async () => {
+    for (let i = 0; i < 6; i += 1) await text('HELP');
+    expect(await dispatch()).toHaveLength(5);
+    expect(await prisma.outboundMessage.findMany({ where: { status: 'failed' } })).toEqual([
+      expect.objectContaining({ kind: 'help', failureReason: 'rate_limited' }),
+    ]);
+    await text('STOP');
+    expect((await dispatch()).map((m) => m.body)).toEqual([expect.stringMatching(/opted out/)]);
+  });
+
+  it('the limit is per restaurant day: a new day, a new five', async () => {
+    for (let i = 0; i < 5; i += 1) await text('HELP');
+    await dispatch();
+    await text('HELP', { now: at(9, 0, '2026-10-03') });
+    expect(await dispatch(at(9, 0, '2026-10-03'))).toHaveLength(1);
   });
 });

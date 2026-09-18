@@ -112,6 +112,17 @@ first project's own record of it.
   cancels in the same milliseconds can still be queued a reminder. An
   `INSERT … SELECT` with the status check is the fix if it ever happens.
 
+- **Quiet hours hold back only what can wait (V-009, operator decision).**
+  21:00–09:00, but messages about tonight's table and replies to the
+  guest's own text still send. A restaurant with a later last seating or a
+  stricter state rule changes `SendPolicy`; the exemption logic stays.
+- **Dispatch locks every queued row each sweep (V-009).** Deferred rows
+  sit in the queue overnight; claiming them all keeps them from starving
+  the rows behind a `LIMIT`. Fine for one restaurant's queue; a
+  `notBefore` column is the upgrade.
+- **The daily text limit counts by status-change time (V-009)**, so a text
+  sent at 23:59 and delivered after midnight counts toward the next day.
+
 ## Defects Found
 
 - **V-003: the spec's own constraint would have double-seated tables.** A
@@ -144,6 +155,25 @@ first project's own record of it.
   now waits 50 ms, and without the lock it sends 12 texts for 3 messages.
   Lesson: a race test needs the race window held open on purpose.
 
+- **V-007: a rollback path no test reached.** A change deletes the old
+  holds and inserts the new ones under one savepoint, so a refusal by the
+  constraint brings the old holds back. Every change test that refused
+  did so in the *engine*, before any delete ran. Moving the delete outside
+  the savepoint left all 29 of them green. That would have been a guest
+  holding nothing after a refused change, which is exactly what P0-6
+  forbids. Caught by a mutation pass before commit. The new test puts a
+  hold the engine cannot see onto the target table, so only the constraint
+  can refuse. Lesson: a refusal test proves only the refusal path it
+  actually reaches. Check whether it is the engine or the constraint
+  saying no.
+
+- **V-009: a test that STOPped too early.** The rate-limit test queued six
+  HELP replies, then a STOP, then dispatched once, and expected five sends.
+  It got one: the send-time check correctly dropped every HELP, because the
+  number had opted out before any of them went. The code was right and the
+  test was describing the old, queue-time world. Lesson: once a check moves
+  to send time, a test's order of *events* matters, not just its inputs.
+
 ## Skills Learned / Functions Unlocked
 
 *(filled in as phases land.)*
@@ -159,16 +189,3 @@ first project's own record of it.
 ## By the Numbers
 
 *(reserved for the end.)*
-
-- **V-007: a rollback path no test reached.** A change deletes the old
-  holds and inserts the new ones under one savepoint, so a refusal by the
-  constraint brings the old holds back. Every change test that refused
-  did so in the *engine*, before any delete ran. Moving the delete outside
-  the savepoint left all 29 of them green. That would have been a guest
-  holding nothing after a refused change, which is exactly what P0-6
-  forbids. Caught by a mutation pass before commit. The new test puts a
-  hold the engine cannot see onto the target table, so only the constraint
-  can refuse. Lesson: a refusal test proves only the refusal path it
-  actually reaches. Check whether it is the engine or the constraint
-  saying no.
-

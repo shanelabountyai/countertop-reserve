@@ -57,6 +57,8 @@ export type PlaceRequest = GuestFields & {
   startAt: Date;
   partySize: number;
   source: 'guest_web' | 'host';
+  /** The consent checkbox's wording, as shown, when the guest ticked it (P0-8). Absent = no texts. */
+  smsConsent?: string | undefined;
   now: Date;
 };
 
@@ -186,6 +188,7 @@ async function allocate(tx: Prisma.TransactionClient, req: PlaceRequest, config:
         createdAt: req.now,
         statusChangedAt: req.now,
         manageToken,
+        smsConsent: req.smsConsent?.trim() || null,
         holds: { create: tableIds.map((tableId) => ({ tableId, startAt: req.startAt, endAt: f.endAt })) },
       },
     });
@@ -195,9 +198,12 @@ async function allocate(tx: Prisma.TransactionClient, req: PlaceRequest, config:
     // Queued in the booking's transaction: no booking without its
     // confirmation, no confirmation without its booking. A replay returns
     // before reaching here, and (reservation, kind) is unique regardless.
-    await tx.outboundMessage.create({
-      data: { reservationId: reservation.id, kind: 'confirmation', toPhone: req.guestPhone, body, status: 'queued', createdAt: req.now, statusChangedAt: req.now },
-    });
+    // No consent, no text (P0-8).
+    if (reservation.smsConsent) {
+      await tx.outboundMessage.create({
+        data: { reservationId: reservation.id, kind: 'confirmation', toPhone: req.guestPhone, body, status: 'queued', createdAt: req.now, statusChangedAt: req.now },
+      });
+    }
     return reservation;
   });
   return reservation ? { ok: true, reservation, replayed: false } : { ok: false, reason: 'no_longer_available' };

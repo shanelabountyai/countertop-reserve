@@ -205,3 +205,26 @@ sweeps running at once release a table once and text once. A guest who
 booked at 6:30 for 7:00 is never released for "failing to confirm" in a
 window they never had, and a guest who texted STOP still loses an
 unconfirmed table on time — they just aren't texted about it.
+
+## V-009 — Texts that know when to stay quiet
+
+Every text now passes three checks at the moment it would go out, not the
+moment it was written: has this number said STOP, is it the middle of the
+night, and has this number already had five texts today. A reminder queued
+yesterday for a guest who opted out this morning is stopped at the door,
+and the record says why.
+
+The interesting call was quiet hours. The draft spec said 21:00–09:00,
+which sounds right until you remember the restaurant seats until 22:00: a
+guest booking at 21:30 for 21:45 would get their confirmation the next
+morning. Asked as an operator question before building, the answer was to
+keep the window but let through what can't wait — anything about tonight's
+table, and any reply to a text the guest just sent us. Reminders and
+"we released your table" notices for later days wait until 9am. The table
+itself is released on time regardless: the message waits, the inventory
+never does.
+
+Booking now records the exact consent wording the guest agreed to, not
+just a checkbox, and a booking made without consent (a phone booking the
+host enters) is never texted. STOP is always acknowledged, even at 2am and
+even over the daily limit, because it is the one message a guest must get.

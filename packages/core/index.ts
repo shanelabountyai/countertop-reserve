@@ -6,6 +6,7 @@
 //   V-006  message templating (rendered bodies, snapshot-safe)
 //   V-007  the inbound SMS grammar and what a reply does
 //   V-008  the deadline sweep: auto-release and reminders
+//   V-009  send-time compliance: STOP, quiet hours, the daily limit
 export * from './floor-plan';
 export * from './availability';
 export * from './time';
@@ -14,3 +15,4 @@ export * from './booking';
 export * from './messages';
 export * from './inbound';
 export * from './sweep';
+export * from './compliance';

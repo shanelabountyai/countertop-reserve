@@ -11,6 +11,7 @@ import { resetDatabase } from './testing/index';
 // booking for 19:00 fits only once the first lets go of it.
 const DAY = '2026-10-02';
 const TZ = 'America/Los_Angeles';
+const CONSENT = 'Text me about this reservation. Reply STOP to opt out.';
 const at = (h: number, m = 0, day = DAY) => zonedTimeToInstant(day, h * 60 + m, TZ);
 const BOOKED_AT = at(12, 0, '2026-09-25');
 const PHONE = '+15035550100';
@@ -31,7 +32,7 @@ const config: SweepConfig = { restaurant: 'Firebird Kitchen', timezone: TZ, mana
 let n = 0;
 async function book(over: Partial<PlaceRequest> = {}) {
   const res = await placeReservation(
-    { idempotencyKey: `key-${(n += 1)}`, day: DAY, startAt: at(19), partySize: 2, guestName: 'Dana Reyes', guestPhone: PHONE, source: 'guest_web', now: BOOKED_AT, ...over },
+    { idempotencyKey: `key-${(n += 1)}`, day: DAY, startAt: at(19), partySize: 2, guestName: 'Dana Reyes', guestPhone: PHONE, source: 'guest_web', smsConsent: CONSENT, now: BOOKED_AT, ...over },
     placement,
   );
   if (!res.ok) throw new Error(res.reason);
@@ -130,5 +131,52 @@ describe('reminders (P0-5)', () => {
     expect((await sweep(provider, config, BOOKED_AT)).sent).toBe(1);
     expect(await message(r.id, 'confirmation')).toMatchObject({ status: 'sent' });
     expect(sent[0]!.to).toBe(PHONE);
+  });
+});
+
+describe('consent and quiet hours (P0-8)', () => {
+  it('stores the consent wording verbatim; a booking without it gets no text, and still releases on time', async () => {
+    const consented = await book();
+    expect(consented.smsConsent).toBe(CONSENT);
+    await prisma.diningTable.create({ data: { id: 'T2', seats: 2, minParty: 1, section: 'main' } });
+    const silent = await book({ smsConsent: undefined, guestPhone: '+15035550122' });
+    await sweep(mockProvider().provider, config, at(16));
+    expect((await get(silent.id)).status).toBe('released');
+    expect((await get(silent.id)).messages).toEqual([]);
+  });
+
+  // Released at 20:00 the evening before, so the notice lands around 21:00.
+  const early = { ...config, policy: { ...DEFAULT_SWEEP, releaseLead: 23 * 60 } };
+
+  it('20:59: releases and sends the notice', async () => {
+    const r = await book();
+    await sweep(mockProvider().provider, early, BOOKED_AT); // the confirmation goes out first
+    await sweep(mockProvider().provider, early, at(20, 59, '2026-10-01'));
+    expect(await message(r.id, 'released')).toMatchObject({ status: 'sent' });
+  });
+
+  it('21:00: releases on time — the table is free now — but holds the notice to 09:00', async () => {
+    const r = await book();
+    await sweep(mockProvider().provider, early, BOOKED_AT);
+    const { provider, sent } = mockProvider();
+    expect((await sweep(provider, early, at(21, 0, '2026-10-01'))).released).toEqual([r.id]);
+    expect((await get(r.id)).holds).toEqual([]);
+    expect(await message(r.id, 'released')).toMatchObject({ status: 'queued' });
+    await sweep(provider, early, at(8, 59));
+    expect(sent).toEqual([]);
+    await sweep(provider, early, at(9));
+    expect(await message(r.id, 'released')).toMatchObject({ status: 'sent', statusChangedAt: at(9) });
+  });
+
+  it('a STOP after the reminder was queued: the reminder is dropped at send time, and logged', async () => {
+    const r = await book();
+    await sweep(mockProvider().provider, config, BOOKED_AT);
+    await sweep(mockProvider().provider, config, at(21, 30, '2026-10-01')); // T-24h reminder queued, then deferred
+    expect(await message(r.id, 'reminder')).toMatchObject({ status: 'queued' });
+    await prisma.smsOptOut.create({ data: { phone: PHONE, at: at(22, 0, '2026-10-01') } });
+    const { provider, sent } = mockProvider();
+    await sweep(provider, config, at(9));
+    expect(sent).toEqual([]);
+    expect(await message(r.id, 'reminder')).toMatchObject({ status: 'failed', failureReason: 'opted_out' });
   });
 });

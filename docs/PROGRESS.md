@@ -539,3 +539,47 @@ V-007 committed at a6593a5.
   scheduler hitting `/api/cron/sweep` every few minutes.
 
 V-008 committed at 1153370.
+
+## V-009 — Consent, quiet hours, and STOP at send time
+
+**Built:** `packages/core/compliance.ts` — `quietUntil` and `sendDecision`,
+pure, `now` and timezone as parameters. `dispatchQueued` asks it about
+every queued row at the moment it would send: `send`, `defer` (row stays
+`queued` for a later sweep), or a drop recorded as `failed` with reason
+`opted_out` / `rate_limited` — that row is the drop's log.
+`Reservation.smsConsent` (hand-written migration, blank refused by CHECK)
+stores the consent wording verbatim; no consent means no confirmation,
+reminder or release notice is ever queued.
+
+**Decisions:**
+- **Operator review (the PRD's one open question):** quiet hours stay
+  21:00–09:00 restaurant time, but hold back only what can wait for
+  morning. A reply to the guest's own text, and anything about a
+  reservation starting before the window ends, still send. Recorded as
+  resolved in the PRD.
+- **STOP's acknowledgement is exempt from every rule** — opt-out, quiet
+  hours, and the daily limit. Every other kind, owned or reply, is dropped
+  once the number has opted out, including rows queued before the STOP.
+- **The daily limit counts texts the provider accepted** (a provider id)
+  since the start of the restaurant day, per number; a deferred row is not
+  counted and not dropped, because tomorrow is a new day.
+- **Dispatch claims every queued row** (no SQL `LIMIT`) so deferred rows
+  cannot starve the rows behind them; `limit` counts rows moved
+  (`ponytail:`, `notBefore` column if the queue grows).
+- **Consent is checked at queue time only.** It cannot be withdrawn except
+  by STOP, which is the send-time check.
+- **Host-entered bookings carry no consent** and so get no texts: the
+  `PlaceRequest.smsConsent` field is optional, absent = none.
+
+**Tests:** quiet-window boundaries at 08:59/09:00/20:59/21:00 plus a DST
+night; STOP against every message kind; the release-notice deferral at
+20:59 vs 21:00 with the table free immediately; a reminder queued before a
+STOP and dropped at send time; a 23:00 reply sent; the sixth text of the
+day dropped and STOP still acknowledged; the limit resetting the next day.
+
+**Left behind:**
+- `table_ready` (the quiet-hours exemption P0-8 names) — V-010, noted on
+  its backlog line.
+- The daily count reads `statusChangedAt`, so a text sent at 23:59 and
+  delivered at 00:01 counts toward the next day. Accepted; add `sentAt`
+  if the limit ever has to be exact.

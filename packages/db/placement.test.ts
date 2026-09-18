@@ -8,6 +8,7 @@ import { resetDatabase } from './testing/index';
 // Friday 2026-10-02, America/Los_Angeles. Dinner 17:00–21:00, `now` = noon.
 const DAY = '2026-10-02';
 const TZ = 'America/Los_Angeles';
+const CONSENT = 'Text me about this reservation. Reply STOP to opt out.';
 const NOW = zonedTimeToInstant(DAY, 12 * 60, TZ);
 const at = (h: number, m = 0) => zonedTimeToInstant(DAY, h * 60 + m, TZ);
 
@@ -32,6 +33,7 @@ const request = (over: Partial<PlaceRequest> = {}): PlaceRequest => ({
   guestName: 'Dana Reyes',
   guestPhone: '+15035550100',
   source: 'guest_web',
+  smsConsent: CONSENT,
   now: NOW,
   ...over,
 });
@@ -276,7 +278,7 @@ describe('confirmation text (P0-5)', () => {
 
     expect(await prisma.reservation.findUniqueOrThrow({ where: { id: r.id } })).toEqual(before.reservation);
     const { provider, sent } = mockProvider();
-    await dispatchQueued(provider, NOW);
+    await dispatchQueued(provider, NOW, { timezone: TZ });
     expect(sent.find((m) => m.id === before.message.id)?.body).toBe(before.message.body);
     expect(sent.find((m) => m.id !== before.message.id)?.body).toMatch(/^EDITED /);
   });
@@ -289,7 +291,7 @@ describe('delivery state (P0-5)', () => {
     await floor([['T1', 2]]);
     await placeReservation(request(), config());
     const { provider, sent } = mockProvider();
-    const [m] = await dispatchQueued(provider, NOW);
+    const [m] = await dispatchQueued(provider, NOW, { timezone: TZ });
     expect(m).toMatchObject({ status: 'sent', providerMessageId: sent[0]!.providerMessageId, statusChangedAt: NOW });
     expect(await recordDelivery(sent[0]!.providerMessageId, { status: 'delivered' }, LATER)).toBe(true);
     expect(await prisma.outboundMessage.findFirstOrThrow()).toMatchObject({ status: 'delivered', statusChangedAt: LATER });
@@ -299,8 +301,8 @@ describe('delivery state (P0-5)', () => {
     await floor([['T1', 2]]);
     await placeReservation(request(), config());
     const { provider, sent } = mockProvider();
-    await dispatchQueued(provider, NOW);
-    await dispatchQueued(provider, NOW);
+    await dispatchQueued(provider, NOW, { timezone: TZ });
+    await dispatchQueued(provider, NOW, { timezone: TZ });
     expect(sent).toHaveLength(1);
   });
 
@@ -310,7 +312,7 @@ describe('delivery state (P0-5)', () => {
     const { provider: fast, sent } = mockProvider();
     // A slow carrier, so every dispatcher has read the queue before any commits.
     const provider = { send: async (m: Parameters<typeof fast.send>[0]) => (await new Promise((r) => setTimeout(r, 50)), fast.send(m)) };
-    await Promise.all(Array.from({ length: 4 }, () => dispatchQueued(provider, NOW)));
+    await Promise.all(Array.from({ length: 4 }, () => dispatchQueued(provider, NOW, { timezone: TZ })));
     expect(sent).toHaveLength(3);
     expect(new Set(sent.map((m) => m.id)).size).toBe(3);
   });
@@ -319,7 +321,7 @@ describe('delivery state (P0-5)', () => {
     await floor([['T1', 2]]);
     await placeReservation(request(), config());
     const { provider, sent } = mockProvider(new Set(['+15035550100']));
-    await dispatchQueued(provider, NOW);
+    await dispatchQueued(provider, NOW, { timezone: TZ });
     expect(sent).toHaveLength(0);
     expect(await prisma.outboundMessage.findFirstOrThrow()).toMatchObject({ status: 'failed', failureReason: 'unreachable', providerMessageId: null });
   });
@@ -328,7 +330,7 @@ describe('delivery state (P0-5)', () => {
     await floor([['T1', 2]]);
     await placeReservation(request(), config());
     const { provider, sent } = mockProvider();
-    await dispatchQueued(provider, NOW);
+    await dispatchQueued(provider, NOW, { timezone: TZ });
     const id = sent[0]!.providerMessageId;
     expect(await recordDelivery(id, { status: 'failed', reason: 'carrier: 30006' }, LATER)).toBe(true);
     expect(await recordDelivery(id, { status: 'failed', reason: 'carrier: 30006' }, LATER)).toBe(false);

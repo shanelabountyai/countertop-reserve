@@ -160,8 +160,7 @@ function replyKind(action: InboundAction, optedOut: boolean): MessageKind | null
     case 'opted_in':
       return 'help';
     default:
-      // ponytail: opt-out is checked at queue time here; V-009 adds the
-      // send-time check in dispatch (P0-8), which this does not replace.
+      // Also checked at send time, in dispatch (P0-8).
       return optedOut ? null : action.outcome;
   }
 }
