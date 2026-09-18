@@ -7,7 +7,7 @@
 //      COMMITTED gives every statement a fresh snapshot, so a same-bucket
 //      booking that just committed is visible here.
 //   3. Reservation + TableHold rows under the exclusion constraint, one
-//      savepoint per candidate unit. A booking in a DIFFERENT bucket can take
+//      savepoint per candidate unit (firstUnit, shared with a change). A booking in a DIFFERENT bucket can take
 //      the table between our read and our insert; the constraint, not the
 //      read, is what refuses it (23P01). We fall through to the next unit,
 //      and when none is left we return a clean refusal.
@@ -21,6 +21,8 @@ import {
   DEFAULT_TEMPLATES,
   HOLDS_TABLES,
   invalidGuestField,
+  isUpcoming,
+  parseStatus,
   plusMs,
   turnMinutes,
   DEFAULT_TURN_BANDS,
@@ -89,17 +91,27 @@ export async function placeReservation(req: PlaceRequest, config: PlacementConfi
   }
 }
 
-async function allocate(tx: Prisma.TransactionClient, req: PlaceRequest, config: PlacementConfig): Promise<Placement> {
+/**
+ * Steps 1–2: take the bucket lock, read what is held, ask the engine. `except`
+ * leaves one reservation out of the occupied set — a change must not collide
+ * with the booking it replaces.
+ */
+async function fit(
+  tx: Prisma.TransactionClient,
+  q: { day: string; startAt: Date; partySize: number; now: Date },
+  config: PlacementConfig,
+  except?: string,
+) {
   // The bucket IS the slot's start instant (slots sit on the 15-minute grid).
-  // Single-key form: nothing else in this database takes advisory locks.
-  const bucket = req.startAt.getTime() / 60_000;
+  // Single-key form; the inbound handler's per-number locks use the two-key space.
+  const bucket = q.startAt.getTime() / 60_000;
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(${bucket}::bigint)`;
 
   const [tables, combos, held] = [
     await tx.diningTable.findMany(),
     await tx.combination.findMany({ include: { members: true } }),
     await tx.reservation.findMany({
-      where: { businessDay: req.day, status: { in: [...HOLDS_TABLES] } },
+      where: { businessDay: q.day, status: { in: [...HOLDS_TABLES] }, ...(except && { id: { not: except } }) },
       select: { startAt: true, partySize: true, turnMinutes: true, tableIds: true },
     }),
   ];
@@ -110,20 +122,42 @@ async function allocate(tx: Prisma.TransactionClient, req: PlaceRequest, config:
   };
   const bands = config.turnBands ?? DEFAULT_TURN_BANDS;
   const avail = availability({
-    day: req.day,
-    partySize: req.partySize,
+    day: q.day,
+    partySize: q.partySize,
     plan,
     schedule: config.schedule,
     reservations: held.map((r) => ({ ...r, start: r.startAt })),
-    now: req.now,
+    now: q.now,
     turnBands: bands,
   });
-  const slot = avail.slots.find((s) => s.start.getTime() === req.startAt.getTime());
-  if (!slot) return { ok: false, reason: avail.reason ?? 'closed' }; // off-grid or outside every period
-  if (!slot.bookable) return { ok: false, reason: slot.reason };
+  const slot = avail.slots.find((s) => s.start.getTime() === q.startAt.getTime());
+  if (!slot) return { ok: false as const, reason: avail.reason ?? 'closed' }; // off-grid or outside every period
+  if (!slot.bookable) return { ok: false as const, reason: slot.reason };
+  const turn = turnMinutes(q.partySize, bands);
+  return { ok: true as const, units: slot.units, turn, endAt: plusMs(q.startAt, turn * 60_000) };
+}
 
-  const turn = turnMinutes(req.partySize, bands);
-  const endAt = plusMs(req.startAt, turn * 60_000);
+/**
+ * Step 3: `write` each candidate unit under its own savepoint until one
+ * clears the exclusion constraint; null when every unit was taken under us.
+ * A failed attempt rolls back everything `write` did, not just the hold.
+ */
+async function firstUnit<T>(tx: Prisma.TransactionClient, units: readonly { tableIds: readonly string[] }[], write: (tableIds: string[]) => Promise<T>) {
+  for (const unit of units) {
+    await tx.$executeRaw`SAVEPOINT unit`;
+    try {
+      return await write([...unit.tableIds]);
+    } catch (e) {
+      if (!NO_OVERLAP.test(String(e))) throw e;
+      await tx.$executeRaw`ROLLBACK TO SAVEPOINT unit`;
+    }
+  }
+  return null;
+}
+
+async function allocate(tx: Prisma.TransactionClient, req: PlaceRequest, config: PlacementConfig): Promise<Placement> {
+  const f = await fit(tx, req, config);
+  if (!f.ok) return f;
   const manageToken = newManageToken();
   // Rendered once, here, and stored: the snapshot rule for messages. Too long
   // to text throws, and the booking rolls back with it.
@@ -135,42 +169,90 @@ async function allocate(tx: Prisma.TransactionClient, req: PlaceRequest, config:
     partySize: req.partySize,
     link: `${config.manageBaseUrl}/${manageToken}`,
   });
-  for (const unit of slot.units) {
-    await tx.$executeRaw`SAVEPOINT unit`;
-    try {
-      const reservation = await tx.reservation.create({
-        data: {
-          idempotencyKey: req.idempotencyKey,
-          businessDay: req.day,
-          startAt: req.startAt,
-          partySize: req.partySize,
-          turnMinutes: turn,
-          tableIds: [...unit.tableIds],
-          guestName: req.guestName.trim(),
-          guestPhone: req.guestPhone,
-          note: req.note ?? null,
-          tags: [...(req.tags ?? [])],
-          status: 'booked',
-          createdAt: req.now,
-          statusChangedAt: req.now,
-          manageToken,
-          holds: { create: unit.tableIds.map((tableId) => ({ tableId, startAt: req.startAt, endAt })) },
-        },
-      });
-      await tx.reservationEvent.create({
-        data: { reservationId: reservation.id, at: req.now, fromStatus: null, toStatus: 'booked', source: req.source },
-      });
-      // Queued in the booking's transaction: no booking without its
-      // confirmation, no confirmation without its booking. A replay returns
-      // before reaching here, and (reservation, kind) is unique regardless.
-      await tx.outboundMessage.create({
-        data: { reservationId: reservation.id, kind: 'confirmation', toPhone: req.guestPhone, body, status: 'queued', createdAt: req.now, statusChangedAt: req.now },
-      });
-      return { ok: true, reservation, replayed: false };
-    } catch (e) {
-      if (!NO_OVERLAP.test(String(e))) throw e;
-      await tx.$executeRaw`ROLLBACK TO SAVEPOINT unit`;
+  const reservation = await firstUnit(tx, f.units, async (tableIds) => {
+    const reservation = await tx.reservation.create({
+      data: {
+        idempotencyKey: req.idempotencyKey,
+        businessDay: req.day,
+        startAt: req.startAt,
+        partySize: req.partySize,
+        turnMinutes: f.turn,
+        tableIds,
+        guestName: req.guestName.trim(),
+        guestPhone: req.guestPhone,
+        note: req.note ?? null,
+        tags: [...(req.tags ?? [])],
+        status: 'booked',
+        createdAt: req.now,
+        statusChangedAt: req.now,
+        manageToken,
+        holds: { create: tableIds.map((tableId) => ({ tableId, startAt: req.startAt, endAt: f.endAt })) },
+      },
+    });
+    await tx.reservationEvent.create({
+      data: { reservationId: reservation.id, at: req.now, fromStatus: null, toStatus: 'booked', source: req.source },
+    });
+    // Queued in the booking's transaction: no booking without its
+    // confirmation, no confirmation without its booking. A replay returns
+    // before reaching here, and (reservation, kind) is unique regardless.
+    await tx.outboundMessage.create({
+      data: { reservationId: reservation.id, kind: 'confirmation', toPhone: req.guestPhone, body, status: 'queued', createdAt: req.now, statusChangedAt: req.now },
+    });
+    return reservation;
+  });
+  return reservation ? { ok: true, reservation, replayed: false } : { ok: false, reason: 'no_longer_available' };
+}
+
+export type ChangeRequest = {
+  reservationId: string;
+  /** Restaurant-timezone "YYYY-MM-DD" of the new time. */
+  day: string;
+  startAt: Date;
+  partySize: number;
+  source: 'guest_web' | 'sms' | 'host';
+  now: Date;
+};
+
+export type Change =
+  | { ok: true; reservation: Reservation }
+  /** `not_changeable`: not upcoming (cancelled, seated, released…) or already started. */
+  | { ok: false; reason: DayReason | 'no_longer_available' | 'not_changeable' };
+
+/**
+ * A time or party-size change is a RE-ALLOCATION (P0-6), not an edit: the
+ * new window goes through the engine and the exclusion constraint like a new
+ * booking. The old holds are deleted and the new ones inserted under one
+ * savepoint, so a refusal restores the old holds with it — there is no
+ * moment, committed or not, where the guest holds nothing. Status is kept: a
+ * confirmed guest who moves stays confirmed.
+ */
+export async function changeReservation(req: ChangeRequest, config: PlacementConfig): Promise<Change> {
+  return prisma.$transaction(async (tx): Promise<Change> => {
+    const [current] = await tx.$queryRaw<Reservation[]>`SELECT * FROM "Reservation" WHERE id = ${req.reservationId}::uuid FOR UPDATE`;
+    if (!current || !isUpcoming(parseStatus(current.status)) || req.now.getTime() >= current.startAt.getTime()) {
+      return { ok: false, reason: 'not_changeable' };
     }
-  }
-  return { ok: false, reason: 'no_longer_available' };
+    const f = await fit(tx, req, config, current.id);
+    if (!f.ok) return f;
+    const updated = await firstUnit(tx, f.units, async (tableIds) => {
+      await tx.tableHold.deleteMany({ where: { reservationId: current.id } });
+      await tx.tableHold.createMany({ data: tableIds.map((tableId) => ({ reservationId: current.id, tableId, startAt: req.startAt, endAt: f.endAt })) });
+      return tx.reservation.update({
+        where: { id: current.id },
+        data: { businessDay: req.day, startAt: req.startAt, partySize: req.partySize, turnMinutes: f.turn, tableIds },
+      });
+    });
+    if (!updated) return { ok: false, reason: 'no_longer_available' };
+    await tx.reservationEvent.create({
+      data: {
+        reservationId: current.id,
+        at: req.now,
+        fromStatus: current.status,
+        toStatus: current.status,
+        source: req.source,
+        note: `changed from ${current.startAt.toISOString()} party ${current.partySize} at ${current.tableIds.join('+')}`,
+      },
+    });
+    return { ok: true, reservation: updated };
+  }, { maxWait: 10_000, timeout: 10_000 });
 }

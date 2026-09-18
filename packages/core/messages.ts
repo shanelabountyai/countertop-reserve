@@ -5,7 +5,21 @@
 // to messages (CLAUDE.md). Nothing re-renders a stored message from a
 // template, so a template edit after booking can never rewrite history.
 
-export const MESSAGE_KINDS = ['confirmation'] as const;
+/**
+ * `confirmation` is sent on booking, one per reservation. The rest are
+ * replies to an inbound text (P0-6, Appendix A), one per inbound message.
+ */
+export const MESSAGE_KINDS = [
+  'confirmation',
+  'confirmed',
+  'cancelled',
+  'change_link',
+  'choose',
+  'no_reservation',
+  'unrecognised',
+  'help',
+  'opted_out',
+] as const;
 export type MessageKind = (typeof MESSAGE_KINDS)[number];
 
 /** `queued → sent → delivered | failed`; a send the provider refuses outright goes `queued → failed`. */
@@ -23,19 +37,33 @@ export const canDeliver = (from: DeliveryStatus, to: DeliveryStatus) => NEXT[fro
 /** Documented in the outgoing text itself (P0-6). V-007 parses exactly these. */
 export const REPLY_KEYS = 'Reply C to confirm, X to cancel, CHANGE to change.';
 
-export const SLOTS = ['restaurant', 'date', 'time', 'party', 'link', 'replyKeys'] as const;
-export type Slots = Record<(typeof SLOTS)[number], string>;
+export const SLOTS = ['restaurant', 'date', 'time', 'party', 'link', 'replyKeys', 'bookLink', 'phone', 'count', 'choices'] as const;
+export type Slots = Partial<Record<(typeof SLOTS)[number], string>>;
 export type Templates = Record<MessageKind, string>;
 
+// Hyphens, not the PRD's em dashes: one "—" turns the whole text UCS-2 and
+// shrinks a segment from 160 characters to 70.
 export const DEFAULT_TEMPLATES: Templates = {
   confirmation: '{restaurant}: table for {party} on {date} at {time}. {replyKeys} Manage: {link}',
+  confirmed: 'Confirmed - {party} on {date} at {time}. See you then. Reply X to cancel or CHANGE to reschedule.',
+  cancelled: 'Cancelled - {date} at {time}. Thanks for letting us know. Book again anytime: {bookLink}',
+  change_link: 'Change your {date} {time} booking here: {link} - your current table is held until you submit.',
+  choose: 'You have {count} upcoming: {choices}. Reply with the number, then C or X.',
+  no_reservation: "We don't see an upcoming reservation for this number. Book here: {bookLink}",
+  unrecognised: 'Sorry - I only understand C (confirm), X (cancel), CHANGE, or HELP.',
+  help: '{restaurant} reservations. Reply C to confirm, X to cancel, CHANGE to reschedule, STOP to opt out. Call {phone}.',
+  opted_out: "You're opted out and won't get more texts. Your booking is unchanged - call {phone} to change it.",
 };
 
-/** Fills `{slot}`s. An unknown slot name is a template bug and throws rather than sending a literal "{tiem}". */
+/**
+ * Fills `{slot}`s. An unknown or unsupplied slot is a template bug and throws
+ * rather than sending a literal "{tiem}" or "undefined".
+ */
 export function render(template: string, slots: Slots): string {
   return template.replace(/\{(\w+)\}/g, (_, name: string) => {
-    if (!(SLOTS as readonly string[]).includes(name)) throw new Error(`Unknown template slot {${name}}`);
-    return slots[name as keyof Slots];
+    const value = (SLOTS as readonly string[]).includes(name) ? slots[name as keyof Slots] : undefined;
+    if (value === undefined) throw new Error(`Unknown template slot {${name}}`);
+    return value;
   });
 }
 
@@ -57,6 +85,23 @@ export function segments(body: string): number {
   return units <= single ? 1 : Math.ceil(units / part);
 }
 
+/** `date` and `time` slots for an instant, in the restaurant's timezone. */
+export function whenSlots(startAt: Date, timezone: string): { date: string; time: string } {
+  const fmt = (o: Intl.DateTimeFormatOptions) =>
+    // ICU ≥72 puts U+202F before AM/PM, which is not GSM-7 and would halve the segment size.
+    new Intl.DateTimeFormat('en-US', { timeZone: timezone, ...o }).format(startAt).replace(/\u202f/g, ' ');
+  return { date: fmt({ weekday: 'short', month: 'short', day: 'numeric' }), time: fmt({ hour: 'numeric', minute: '2-digit' }) };
+}
+
+/** Renders, then refuses anything over 2 segments / 320 chars rather than sending a third. */
+export function renderMessage(template: string, slots: Slots): string {
+  const body = render(template, slots);
+  if ([...body].length > MAX_CHARS || segments(body) > MAX_SEGMENTS) {
+    throw new Error(`Message is ${segments(body)} segments / ${[...body].length} chars; max ${MAX_SEGMENTS} / ${MAX_CHARS}`);
+  }
+  return body;
+}
+
 export type ConfirmationInput = {
   template: string;
   restaurant: string;
@@ -74,19 +119,11 @@ export type ConfirmationInput = {
  * silently goes unconfirmed.
  */
 export function confirmationBody(i: ConfirmationInput): string {
-  const fmt = (o: Intl.DateTimeFormatOptions) =>
-    // ICU ≥72 puts U+202F before AM/PM, which is not GSM-7 and would halve the segment size.
-    new Intl.DateTimeFormat('en-US', { timeZone: i.timezone, ...o }).format(i.startAt).replace(/ /g, ' ');
-  const body = render(i.template, {
+  return renderMessage(i.template, {
     restaurant: i.restaurant,
-    date: fmt({ weekday: 'short', month: 'short', day: 'numeric' }),
-    time: fmt({ hour: 'numeric', minute: '2-digit' }),
+    ...whenSlots(i.startAt, i.timezone),
     party: String(i.partySize),
     link: i.link,
     replyKeys: REPLY_KEYS,
   });
-  if ([...body].length > MAX_CHARS || segments(body) > MAX_SEGMENTS) {
-    throw new Error(`Confirmation is ${segments(body)} segments / ${[...body].length} chars; max ${MAX_SEGMENTS} / ${MAX_CHARS}`);
-  }
-  return body;
 }

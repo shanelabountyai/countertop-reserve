@@ -78,26 +78,26 @@ model CombinationMember {
 // booking; nothing here is recomputed from today's floor plan or turn bands.
 
 model Reservation {
-  id             String   @id @default(uuid()) @db.Uuid
+  id              String   @id @default(uuid()) @db.Uuid
   /// Client-generated. A double-submit finds this row and returns it.
-  idempotencyKey String   @unique
+  idempotencyKey  String   @unique
   /// Restaurant-timezone YYYY-MM-DD — never a Postgres `date`.
-  businessDay    String
-  startAt        DateTime @db.Timestamptz(3)
-  partySize      Int
+  businessDay     String
+  startAt         DateTime @db.Timestamptz(3)
+  partySize       Int
   /// Snapshot of the turn at booking.
-  turnMinutes    Int
+  turnMinutes     Int
   /// Snapshot of the tables seated at. Display and HeldReservation read
   /// this, never TableHold (holds are deleted on release).
-  tableIds       String[]
-  guestName      String
+  tableIds        String[]
+  guestName       String
   /// E.164.
-  guestPhone     String
+  guestPhone      String
   /// Guest note, ≤140 chars (CHECK).
-  note           String?
+  note            String?
   /// Tag KINDS only — allergy | occasion | accessibility (CHECK). The detail
   /// ("shellfish") goes in the note; the host view styles by kind (P0-9).
-  tags           String[] @default([])
+  tags            String[] @default([])
   /// ponytail: plain text until V-004's lifecycle module owns the list; a
   /// DB enum here would be a second source of truth.
   status          String
@@ -109,6 +109,7 @@ model Reservation {
   holds    TableHold[]
   events   ReservationEvent[]
   messages OutboundMessage[]
+  inbound  InboundMessage[]
 
   @@index([businessDay, startAt])
   @@index([guestPhone])
@@ -134,26 +135,32 @@ model TableHold {
 /// Append-only (trigger). Every transition, including those driven by an
 /// inbound SMS reply; an undo is a logged revert event, never a delete.
 model ReservationEvent {
-  id            BigInt   @id @default(autoincrement())
-  reservationId String   @db.Uuid
-  at            DateTime @db.Timestamptz(3)
-  fromStatus    String?
-  toStatus      String
+  id               BigInt   @id @default(autoincrement())
+  reservationId    String   @db.Uuid
+  at               DateTime @db.Timestamptz(3)
+  fromStatus       String?
+  toStatus         String
   /// guest_web | sms | host | system
-  source        String
-  note          String?
+  source           String
+  note             String?
+  /// The text that drove it, when source is `sms`.
+  inboundMessageId BigInt?
 
-  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  reservation Reservation     @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  inbound     InboundMessage? @relation(fields: [inboundMessageId], references: [id], onDelete: Restrict)
 
   @@index([reservationId, at])
 }
 
 /// The outbound queue (P0-5). `body` is the RENDERED text, snapshotted at
 /// queue time and sent verbatim — never re-rendered from a template.
-/// One row per (reservation, kind): a retry cannot text a guest twice.
+/// Exactly one owner (CHECK): a reservation — one row per (reservation,
+/// kind), so a retry cannot text a guest twice — or the inbound text it
+/// replies to, one reply per inbound (P0-6).
 model OutboundMessage {
   id                String   @id @default(uuid()) @db.Uuid
-  reservationId     String   @db.Uuid
+  reservationId     String?  @db.Uuid
+  inboundMessageId  BigInt?  @unique
   /// MESSAGE_KINDS (CHECK)
   kind              String
   /// Snapshot of the guest's number at queue time.
@@ -167,8 +174,45 @@ model OutboundMessage {
   createdAt         DateTime @db.Timestamptz(3)
   statusChangedAt   DateTime @db.Timestamptz(3)
 
-  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  reservation Reservation?    @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  inbound     InboundMessage? @relation(fields: [inboundMessageId], references: [id], onDelete: Restrict)
 
   @@unique([reservationId, kind])
   @@index([status, createdAt])
+}
+
+/// Every inbound text as received, and what it caused (P0-6). Append-only
+/// (trigger): "the guest says they cancelled" is settled by this row and the
+/// ReservationEvent it points at. The provider's message id is unique — a
+/// redelivered webhook finds its row and changes nothing.
+///
+/// The latest row per number (by id) is the conversation's state: a pending
+/// disambiguation, a selection, a first unrecognised body.
+model InboundMessage {
+  id                BigInt   @id @default(autoincrement())
+  providerMessageId String   @unique
+  /// E.164.
+  fromPhone         String
+  /// As received, ≤1600 chars (CHECK). Stored, never interpolated anywhere.
+  body              String
+  receivedAt        DateTime @db.Timestamptz(3)
+  /// INBOUND_OUTCOMES (CHECK)
+  outcome           String
+  /// The reservation it acted on or selected.
+  reservationId     String?  @db.Uuid
+  /// For `choose`: the reservation ids offered, in the order the reply numbered them.
+  choices           String[] @default([])
+
+  reservation Reservation?       @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  reply       OutboundMessage?
+  events      ReservationEvent[]
+
+  @@index([fromPhone, id])
+}
+
+/// STOP (P0-6/P0-8): a number that opted out of texts. The reservation is
+/// untouched — opting out and cancelling are different intents.
+model SmsOptOut {
+  phone String   @id
+  at    DateTime @db.Timestamptz(3)
 }

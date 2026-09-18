@@ -92,6 +92,17 @@ first project's own record of it.
   holds 70 characters instead of 160. The confirmation would go from two
   segments to three with nothing visibly different.
 
+- **The inbound conversation has no thread table** (V-007). The latest
+  inbound row for a number *is* the state: a pending choice, a selection,
+  or an unrecognised first message. Correct because a per-number advisory
+  lock serializes a number's messages. A host↔guest thread (P1-5) would
+  want a real conversation model.
+- **The webhook signature covers the body, not the URL** (V-007). Twilio
+  signs the full URL plus the parameters. The mock provider signs the raw
+  body. Replaying a captured request is harmless, because handling is
+  idempotent on the provider's message id. The real adapter (P2) brings
+  the provider's own scheme.
+
 ## Defects Found
 
 - **V-003: the spec's own constraint would have double-seated tables.** A
@@ -139,3 +150,16 @@ first project's own record of it.
 ## By the Numbers
 
 *(reserved for the end.)*
+
+- **V-007: a rollback path no test reached.** A change deletes the old
+  holds and inserts the new ones under one savepoint, so a refusal by the
+  constraint brings the old holds back. Every change test that refused
+  did so in the *engine*, before any delete ran. Moving the delete outside
+  the savepoint left all 29 of them green. That would have been a guest
+  holding nothing after a refused change, which is exactly what P0-6
+  forbids. Caught by a mutation pass before commit. The new test puts a
+  hold the engine cannot see onto the target table, so only the constraint
+  can refuse. Lesson: a refusal test proves only the refusal path it
+  actually reaches. Check whether it is the engine or the constraint
+  saying no.
+

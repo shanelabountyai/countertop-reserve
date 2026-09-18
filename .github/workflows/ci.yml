@@ -26,6 +26,8 @@ env:
   DATABASE_URL: postgresql://postgres:postgres@localhost:5432/reserve_ci
   DIRECT_URL: postgresql://postgres:postgres@localhost:5432/reserve_ci
   SHADOW_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/reserve_ci_shadow
+  # A throwaway value: the e2e spec signs with it, the server verifies with it.
+  SMS_WEBHOOK_SECRET: ci-only-not-a-secret
 
 jobs:
   gate:

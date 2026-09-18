@@ -4,9 +4,11 @@
 //   V-004  the ONE reservation lifecycle state machine every reader
 //          derives its status lists from
 //   V-006  message templating (rendered bodies, snapshot-safe)
+//   V-007  the inbound SMS grammar and what a reply does
 export * from './floor-plan';
 export * from './availability';
 export * from './time';
 export * from './lifecycle';
 export * from './booking';
 export * from './messages';
+export * from './inbound';

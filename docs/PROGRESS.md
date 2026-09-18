@@ -369,3 +369,100 @@ Fixture fix (CI-found, see WRITEUP) at 55ffba2.
 
 
 V-006 committed at a29273d.
+
+## V-007 — Change and cancel by reply: the inbound webhook
+
+**Built:**
+- `core/inbound.ts` (pure): `parseReply` implements Appendix B's allowlist
+  in its precedence order (STOP words first). It applies NFKC, strips
+  everything that is not a letter or a digit, and uppercases, so
+  full-width "ＳＴＯＰ", "Yes!" and "stop all" all parse. Digits 1–9 parse as
+  a choice, and anything else is `unknown`. `decideInbound(intent,
+  upcoming, lastInbound, now)` returns the outcome: opt out/in, help,
+  confirm/cancel (through `transition` with actor `guest`), change-link,
+  choose (at most 9 choices), selected, no-reservation, unrecognised or
+  handoff.
+- `core/messages.ts`: eight reply kinds with Appendix A templates. `render`
+  now throws on a slot that is unknown *or not supplied*. `whenSlots` and
+  `renderMessage` (the ≤2-segment / ≤320-char check) are shared with the
+  confirmation.
+- `db/inbound.ts`: `verifySignature` (HMAC-SHA256 hex over the raw body,
+  `timingSafeEqual`, length-checked first) and `parseInboundPayload`
+  (E.164 `from`, `[\w.-]{1,128}` message id, string body). Then
+  `handleInbound`, all in one transaction: a two-key advisory lock on the
+  sender's number, the message-id check, the number's upcoming
+  reservations locked `FOR UPDATE`, the decision, the append-only
+  `InboundMessage` row, the transition with holds deleted on cancel and an
+  `sms` event carrying `inboundMessageId`, and the queued reply.
+- `db/placement.ts`: `changeReservation`. `allocate` was split into `fit`
+  (bucket lock, reads, engine, with an optional reservation left out of
+  the occupied set) and `firstUnit` (the per-unit savepoint loop), and
+  booking and change share both.
+- `app/api/sms/inbound/route.ts`: fails closed with 503 when
+  `SMS_WEBHOOK_SECRET` is unset. Then a 413 over 16 KB, a 401 on a bad
+  signature, a 400 on a bad payload, and otherwise the JSON result.
+- Migration `inbound_message`: `InboundMessage` (BIGSERIAL id, UNIQUE
+  provider id, CHECKs on outcome and body ≤ 1600, append-only trigger) and
+  `SmsOptOut`. `OutboundMessage.reservationId` is now nullable and
+  `inboundMessageId` is UNIQUE, with `outbound_one_owner` =
+  `num_nonnulls(...) = 1`. `outbound_kind_known` was widened.
+  `ReservationEvent.inboundMessageId` was added.
+- Tests: `inbound.test.ts` in core has 63 cases (the grammar, the hostile
+  bodies, the decision table, the 5-minute window at its boundary minute,
+  and every template GSM-7 within 2 segments with nine choices). The DB
+  `inbound.test.ts` has 31: the boundary, confirm/cancel, a sequential and
+  an 8-way concurrent redelivery, a stale redelivery replaying rather than
+  re-parsing, disambiguation, no reservation, CHANGE, unrecognised then
+  handoff, STOP/START, the hostile body stored, append-only and one-owner,
+  and the six change cases including a race and a refusal by the
+  constraint. e2e `inbound-sms.spec.ts` covers 401 unsigned and
+  mis-signed, 400 malformed, and 200 followed by a replay, all against the
+  production build.
+- Mutation-checked: deleting the old holds outside the savepoint, and
+  dropping the self-exclusion in `fit`, are each killed by exactly one
+  test.
+
+**Decided:**
+- **A reply belongs to the inbound message it answers, not to the
+  reservation.** This follows NEXT.md's "revisit the `(reservationId,
+  kind)` unique". A partial unique index would drift against Prisma, and a
+  guest who texts C twice needs two replies. So each message has exactly
+  one owner, and the unique constraint on `inboundMessageId` gives one
+  reply per inbound.
+- **The latest `InboundMessage` for a number is the conversation state.**
+  That covers the pending choice, the selection and the first unrecognised
+  body. No mutable thread table is needed, and the log itself is the
+  evidence. Ordering uses the BIGSERIAL id, since the per-number lock
+  makes insertion order the same as commit order.
+- **A selection ("2") gets no reply.** The PRD shows "—" for it, and A9
+  already told the guest "then C or X". A handoff also gets no bot reply.
+  It shows up as an `InboundMessage` with outcome `handoff` for V-010's
+  host view to surface.
+- **"Unrecognised twice" means twice in a row**, and it stays handed off
+  until something parses.
+- **STOP is recorded here, not in V-009.** It is the first keyword in the
+  grammar, so it is parsed and stored in `SmsOptOut` and acknowledged once
+  (A14). A repeat STOP gets silence. After STOP, confirm and cancel still
+  act, but their replies are not queued. The send-time check in dispatch
+  is still V-009's job.
+- **A14 is worded without {day} {time}**, because a STOP can come from a
+  number with 0 or 2+ reservations: "Your booking is unchanged".
+- **The templates use hyphens, not the PRD's em dashes.** A single "—"
+  turns a text into UCS-2 (70 characters a segment).
+- **A change keeps its status.** A confirmed guest who moves stays
+  confirmed. The event is `from = to` with a `changed from …` note.
+- **The webhook signature covers only the body.** A replayed signed
+  request is harmless because handling is idempotent on the message id. The
+  links in replies use the request's origin.
+
+**Left behind:**
+- The A5/A6 texts (change confirmed, change failed) go to V-012. Its manage
+  page is the only caller of `changeReservation`, and it shows the result
+  on screen.
+- Nothing dispatches the queued replies on a schedule yet. That is V-008's
+  sweep, as with V-006.
+- The restaurant's name, timezone and phone are inline in the route
+  (`ponytail:`) until V-011's config.
+- **Deploy note:** the deployed environment needs `SMS_WEBHOOK_SECRET` set.
+  Until it is, the webhook answers 503 (fail closed).
+

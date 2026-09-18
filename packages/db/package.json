@@ -18,6 +18,8 @@
   },
   "exports": {
     ".": "./index.ts",
-    "./placement": "./placement.ts"
+    "./placement": "./placement.ts",
+    "./inbound": "./inbound.ts",
+    "./messages": "./messages.ts"
   }
 }

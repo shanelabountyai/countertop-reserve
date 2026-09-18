@@ -156,3 +156,31 @@ delivered or failed, with the carrier's reason when it fails. A guest is
 never texted the same confirmation twice, even if the send is retried or
 two senders run at once.
 
+## V-007 — Replying to the text
+
+Guests can now answer the confirmation text. "C" (or "yes") confirms the
+booking, "X" (or "cancel") cancels it, and "CHANGE" sends back the link to
+pick a new time. "HELP" gives the restaurant's number, and "STOP" turns the
+texts off without touching the booking. Each reply gets a short, clear
+answer. A cancelled table is free for someone else the moment the guest's
+text arrives.
+
+A guest with two bookings is never guessed at. They get "You have 2
+upcoming: 1) Fri 7:00 PM, 2) Sat 8:30 PM. Reply with the number, then C or
+X." A number with no booking gets a friendly link to book. A message the
+system does not understand gets one clarifying reply. A second one goes to
+the host instead of looping a bot at a person.
+
+Text messages come from the outside world, so this is where the system
+defends itself. Every incoming message must carry the text provider's
+signature, or it is refused before anything is read. Carriers sometimes
+deliver the same message twice. A repeated delivery gets the same answer
+and never cancels or confirms twice, even when eight copies arrive at
+once. Every incoming text is kept exactly as received, together with what
+it caused, so "the guest says they cancelled" can be settled from the
+record.
+
+Moving a booking to a new time or party size now books the new table
+before letting go of the old one. If the new time is not available, the
+original booking stays exactly as it was.
+

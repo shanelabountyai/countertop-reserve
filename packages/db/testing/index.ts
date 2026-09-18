@@ -16,7 +16,8 @@ export async function resetDatabase(): Promise<void> {
   }
   await prisma.$executeRawUnsafe(`
     TRUNCATE TABLE
-      "OutboundMessage", "ReservationEvent", "TableHold", "Reservation",
+      "OutboundMessage", "ReservationEvent", "InboundMessage", "SmsOptOut",
+      "TableHold", "Reservation",
       "CombinationMember", "Combination", "DiningTable"
     RESTART IDENTITY CASCADE
   `);
