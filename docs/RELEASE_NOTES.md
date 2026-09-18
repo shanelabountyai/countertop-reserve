@@ -47,3 +47,29 @@ lesson twice.
 **What's actually new:** a floor plan and an availability engine that has to
 answer "why not," not just "not now" — the next session's work, not this
 one's.
+
+---
+
+## V-002 — An availability engine that says *why not*
+
+Most booking widgets answer "is 7:00 open?" with a greyed-out button. This
+engine answers with a reason for every time it won't offer: already past,
+outside service hours, every fitting table taken, or the kitchen's pacing
+cap for that 15 minutes is spent. When the whole night is unavailable it
+still names the reason: closed, fully booked, or a party too large (or too
+small) for any table.
+
+**Tables combine, and a combination is real inventory.** Two two-tops pushed
+together make a four-top, but only while both halves are free. The
+fixture that proves it had a flaw the first time round. It booked the
+combination's *first* table, so an engine that only checked the first table
+of a combination passed too. A deliberate mutation of the engine caught the
+gap before commit, and the fixture now books the second table.
+
+**Pacing blocks a time even when tables are free.** Eight covers per 15
+minutes means a 6:00 bucket holding seven guests refuses a party of two,
+while the four-top across the room sits empty. That's the point: the
+kitchen is the constraint, not the floor.
+
+Pure TypeScript, no database, no clock. `now` is a parameter, and the whole
+suite passes identically in UTC and in Kiritimati (UTC+14).

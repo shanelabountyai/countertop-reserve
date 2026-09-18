@@ -93,3 +93,56 @@ reproduced here; the reconciled counts are the record.
   all if it never leaves demo/portfolio use.
 
 V-001 committed at acd82b4.
+
+---
+
+## V-002 — Floor plan model + availability engine
+
+**Built** (`packages/core`, pure, no database, no clock):
+- `floor-plan.ts` — `Table` (seats, min party, section), declared
+  `Combination` (member table ids + seats + min party), `FloorPlan` with an
+  over-seat cap (default 2). `fittingUnits(plan, party)` returns every legal
+  unit best-first: least waste, single table before combination, then id.
+  `turnMinutes(party, bands)` is the one turn-time function (PRD default
+  75/90/120).
+- `availability.ts` — `availability({ day, partySize, plan, schedule,
+  reservations, now })`. Slots every 15 minutes across the day's service
+  periods; each slot is either bookable with its free units in preference
+  order, or not bookable with a reason (`past`, `closed`, `full`,
+  `pacing`). The day gets a reason too when nothing is bookable
+  (`too_large`, `too_small`, `closed`, or the most useful slot reason).
+  `periodsFor` resolves blackout → per-date override → weekly.
+- `time.ts` — `zonedTimeToInstant` and `weekdayOf`, carried from
+  Countertop's `business-day.ts`.
+- 26 unit tests, the fixture matrix hand-calculated in the test file: the
+  last table, a combination-only fit, a pacing-blocked bucket with tables
+  free, a blackout date, a party larger than the largest unit, a turn that
+  overhangs close (and the explicit last-seating override), half-open turn
+  boundaries, the snapshotted-turn rule, past slots. Passes identically
+  under `TZ=UTC` and `TZ=Pacific/Kiritimati`.
+
+**Decided:**
+- **Occupancy is checked per table, never per unit.** A combination's
+  "busy" test is that *every* member table is free, so a deuce booked on T2
+  blocks the T1+T2 four-top, and a booked combination blocks each of its
+  halves.
+- **Held reservations use their own snapshotted `turnMinutes` and
+  `tableIds`**, never recomputed from today's bands or floor plan.
+- **Last seating:** when a period sets `lastSeatingMinute`, starts up to it
+  are offered even if the turn overhangs close; otherwise the turn must end
+  by close. Satisfies both PRD lines (P0-2 overhang, P0-10 "explicit
+  config").
+- **Two reasons beyond the PRD's four:** `past` (a slot at or before `now`)
+  and `too_small` (no unit's min party admits the party). Saying `too_large`
+  to a party of one would be untrue, and the PRD's rule is that the reason
+  has to be true.
+- **Pacing counts covers whose start falls in the slot's own
+  `[start, start+15m)` window**, and the cap is inclusive (6 + 2 = 8 fits a
+  cap of 8).
+
+**Left behind:**
+- The caller decides which reservations hold tables. V-004's status module
+  becomes the single source of that list.
+- No floor-plan validation (for example, a combination naming an unknown
+  table). V-003's foreign keys enforce it at the data layer.
+- No DST-transition-date fixture (`ponytail:` note in `time.ts`).

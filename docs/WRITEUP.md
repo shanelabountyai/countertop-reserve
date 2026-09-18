@@ -7,7 +7,7 @@
 **Repo:** https://github.com/shanelabountyai/countertop-reserve (private)
 **Live demo:** _(not yet — may not be needed; see Scaling Caveats)_
 **Built with:** Claude Code + Next.js (App Router) · TypeScript · Postgres/Prisma · Tailwind · Vitest/Playwright + axe
-**Status:** In progress — V-001 of 13 backlog items · 2026-08-31
+**Status:** In progress — V-002 of 13 backlog items · 2026-09-18
 
 ---
 
@@ -46,12 +46,22 @@ first project's own record of it.
   PRD calls this out explicitly ("a floor moves slower than a kitchen
   queue"). Noted here rather than only in the PRD so it isn't rediscovered
   as a question later.
+- **Availability scans every held reservation for every slot** (V-002):
+  O(slots × reservations), about 16 × 60 for a dinner service. Fine at one
+  restaurant. Index by table if the engine ever serves a multi-day search.
+- **No DST-transition-date fixture** (V-002). A slot inside the one skipped
+  or doubled local hour a year resolves to a real instant near that minute.
+  Dinner service never spans 1–3am, so this is untested rather than wrong.
 
 ## Defects Found
 
-*(none yet — V-001 is a scaffold with nothing to have a defect in beyond
-config, and the two defects a scaffold session could have repeated are
-covered under How It's Built above.)*
+- **V-002: a fixture that could not fail.** The "last table" test proved a
+  combination is blocked when one member table is taken, but it booked the
+  *first* member. Mutating the engine to check only `tableIds[0]` left all
+  26 tests green. It was caught by a deliberate mutation pass before commit,
+  never in the product. The fixture now books the second member, and that
+  mutation fails. Lesson: a test for "every member" needs its example to be
+  a member other than the first.
 
 ## Skills Learned / Functions Unlocked
 
