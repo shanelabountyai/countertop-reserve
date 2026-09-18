@@ -307,3 +307,4 @@ V-004 committed at 4a38ff5.
 
 
 V-005 committed at 3d9fa06.
+Fixture fix (CI-found, see WRITEUP) at 55ffba2.
