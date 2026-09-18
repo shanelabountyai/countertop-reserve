@@ -73,3 +73,24 @@ kitchen is the constraint, not the floor.
 
 Pure TypeScript, no database, no clock. `now` is a parameter, and the whole
 suite passes identically in UTC and in Kiritimati (UTC+14).
+
+## V-003 — The database, not the app, decides who gets the last table
+
+The spec said "a unique constraint on (table, turn window)." Taken
+literally, that constraint lets two parties share a table. A four-top
+booked 7:00–8:30 and another booked 7:30–9:00 have *different* windows, so
+a uniqueness check sees nothing wrong. Turn lengths depend on party size,
+so windows almost never line up exactly.
+
+The fix is a Postgres **exclusion constraint**: a rule that no two holds on
+the same table may *overlap* in time. Combined tables are handled the same
+way, because booking two joined tables writes a hold on each. A test fires
+eight simultaneous bookings at the last open table: one wins, seven are
+refused, and nothing is left half-booked. Back-to-back seatings (one ends
+at 8:30, the next starts at 8:30) still fit, because a window includes its
+start and excludes its end.
+
+The other rule the database now enforces: the reservation history can only
+be added to, never edited or deleted. Undoing a change writes a new "undo"
+entry, so the record of what happened is always complete.
+

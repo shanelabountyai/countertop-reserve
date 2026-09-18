@@ -1,11 +1,12 @@
-// Countertop Reserve — data model. V-001 wires the generator and datasource
-// only; the entities land in V-003, after the schema-review pause
-// START-HERE.md's loop calls for.
+// Countertop Reserve — data model (V-003, after the schema-review pause).
 //
 // RULES THIS FILE WILL OBEY (CLAUDE.md, "Database rules"):
 //
-//  * The allocation constraint is a unique index on (table, turn window) —
-//    concurrent bookings contend on the constraint, not on check-then-write.
+//  * The allocation constraint is an EXCLUSION constraint on TableHold:
+//    (tableId =, [startAt, endAt) &&). Decided at the V-003 review over a
+//    literal UNIQUE: turns vary by party size, so two windows that overlap
+//    are not equal, and a unique index cannot see the collision. Concurrent
+//    bookings contend on the constraint, not on check-then-write.
 //  * The idempotency key has a unique constraint. The disabled submit button
 //    is UX; the constraint is the mechanism.
 //  * Reservation and message tables carry COPIED data as columns — the
@@ -19,6 +20,9 @@
 // WHAT PRISMA CANNOT EXPRESS, AND SO LIVES IN A HAND-WRITTEN MIGRATION:
 //   1. The append-only trigger on the reservation event log (undo writes a
 //      logged revert event; it never deletes).
+//   2. The TableHold exclusion constraint and the btree_gist extension it
+//      needs (a gist index over a plain text column needs btree_gist).
+//   3. CHECK constraints (positive party size and turn, endAt > startAt).
 //
 // NEVER `prisma db push`. Never edit an applied migration.
 // (`prisma migrate dev --create-only`, then edit.)
@@ -36,4 +40,102 @@ datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
+}
+
+// ─── Floor plan (P0-1). Current inventory; reservations never read it for
+// display — they carry their own snapshot.
+
+model DiningTable {
+  id       String @id // "T4" — the host's name for it
+  seats    Int
+  minParty Int
+  section  String
+
+  combinations CombinationMember[]
+  holds        TableHold[]
+}
+
+/// Declared, never inferred: [T4, T5] → 4 seats.
+model Combination {
+  id       String @id
+  seats    Int
+  minParty Int
+
+  members CombinationMember[]
+}
+
+model CombinationMember {
+  combinationId String
+  tableId       String
+
+  combination Combination @relation(fields: [combinationId], references: [id], onDelete: Cascade)
+  table       DiningTable @relation(fields: [tableId], references: [id], onDelete: Restrict)
+
+  @@id([combinationId, tableId])
+}
+
+// ─── Reservations (P0-3). Every column a reader displays is a COPY taken at
+// booking; nothing here is recomputed from today's floor plan or turn bands.
+
+model Reservation {
+  id             String   @id @default(uuid()) @db.Uuid
+  /// Client-generated. A double-submit finds this row and returns it.
+  idempotencyKey String   @unique
+  /// Restaurant-timezone YYYY-MM-DD — never a Postgres `date`.
+  businessDay    String
+  startAt        DateTime @db.Timestamptz(3)
+  partySize      Int
+  /// Snapshot of the turn at booking.
+  turnMinutes    Int
+  /// Snapshot of the tables seated at. Display and HeldReservation read
+  /// this, never TableHold (holds are deleted on release).
+  tableIds       String[]
+  guestName      String
+  /// E.164.
+  guestPhone     String
+  /// ponytail: plain text until V-004's lifecycle module owns the list; a
+  /// DB enum here would be a second source of truth.
+  status          String
+  createdAt       DateTime @db.Timestamptz(3)
+  statusChangedAt DateTime @db.Timestamptz(3)
+
+  holds  TableHold[]
+  events ReservationEvent[]
+
+  @@index([businessDay, startAt])
+  @@index([guestPhone])
+}
+
+/// Live inventory: one row per (reservation, table). A combination writes one
+/// row per member table with the same window, so a combination booking
+/// cannot double-seat one of its own halves. Releasing a table DELETEs its
+/// rows in the same transaction as the status event — the table is real
+/// inventory the instant that commits.
+model TableHold {
+  reservationId String   @db.Uuid
+  tableId       String
+  startAt       DateTime @db.Timestamptz(3)
+  endAt         DateTime @db.Timestamptz(3)
+
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  table       DiningTable @relation(fields: [tableId], references: [id], onDelete: Restrict)
+
+  @@id([reservationId, tableId])
+}
+
+/// Append-only (trigger). Every transition, including those driven by an
+/// inbound SMS reply; an undo is a logged revert event, never a delete.
+model ReservationEvent {
+  id            BigInt   @id @default(autoincrement())
+  reservationId String   @db.Uuid
+  at            DateTime @db.Timestamptz(3)
+  fromStatus    String?
+  toStatus      String
+  /// guest_web | sms | host | system
+  source        String
+  note          String?
+
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+
+  @@index([reservationId, at])
 }

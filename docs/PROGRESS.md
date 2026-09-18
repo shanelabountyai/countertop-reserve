@@ -148,3 +148,57 @@ V-001 committed at acd82b4.
 - No DST-transition-date fixture (`ponytail:` note in `time.ts`).
 
 V-002 committed at 448f0a0.
+
+## V-003 — Data model + hand-written migrations
+
+**Built** (`packages/db`, migration `20260918173221_reservation_model`):
+- Floor plan: `DiningTable`, `Combination`, `CombinationMember` (FK to the
+  table is `Restrict`, so a table a combination names cannot vanish).
+- `Reservation` — every display column is a copy taken at booking:
+  `startAt`, `partySize`, `turnMinutes`, `tableIds[]`, guest name and phone,
+  `businessDay` as a restaurant-timezone string. It produces V-002's
+  `HeldReservation` directly. `idempotencyKey` is unique.
+- `TableHold` — live inventory, one row per (reservation, table), carrying
+  `[startAt, endAt)`. A combination writes one row per member table.
+- `ReservationEvent` — append-only (trigger refuses UPDATE and DELETE;
+  TRUNCATE is left open for test reset, same as Countertop).
+- Hand-written: `btree_gist`, the exclusion constraint, CHECKs (positive
+  party and turn, `endAt > startAt`, at least one table), the trigger.
+  The drift check is clean: Prisma ignores the exclusion constraint and the
+  extension, so the schema and the migration history still agree.
+- `packages/db/constraints.test.ts`, 9 tests against local Postgres:
+  overlap refused, an overlap that starts *earlier* refused, back-to-back
+  turns allowed (half-open), a combination whose half is held refused with
+  no partial hold left behind, 8 concurrent bookings on the last table give
+  exactly 1 win, deleting holds frees the table immediately, a zero-length
+  hold refused, a duplicate idempotency key refused, and the event log
+  refuses UPDATE and DELETE.
+
+**Decided (schema review, 2026-09-18):**
+- **An exclusion constraint, not a literal `UNIQUE(table, turn window)`.**
+  `EXCLUDE USING gist ("tableId" WITH =, tstzrange("startAt","endAt",'[)')
+  WITH &&)`. Turns vary by party size (75/90/120, operator-configurable), so
+  overlapping windows are not *equal* windows and a unique index cannot see
+  the collision. Rejected: one row per (table, 15-minute bucket) under a
+  UNIQUE. It is literal, but it writes 6+ rows per table per turn, rounds
+  turns to the grid, and forces walk-ins onto the grid. The violation is
+  SQLSTATE 23P01, which V-005 maps to a clean refusal.
+- **Pacing cap: an advisory lock per (day, bucket)** inside the booking
+  transaction (to be implemented in V-005). A sum across rows cannot be a
+  constraint, so two bookings on different tables could both pass the check
+  and overshoot. The lock serializes only same-bucket bookings. This is the
+  one deliberate check-then-write, and it guards pacing, not table
+  inventory. Rejected: a soft cap with a documented overshoot.
+- **Release deletes the hold rows** in the same transaction as the status
+  event, so no partial-index predicate on a status column is needed, and a
+  released table is inventory the instant that commits. The reservation
+  keeps its `tableIds` snapshot for history.
+- **`status` is plain text for now.** V-004's lifecycle module is the one
+  list, and a DB enum would be a second one.
+
+**Left behind:**
+- No settings or schedule tables. Service periods, turn bands and the
+  timezone stay config until P0-10's hours editor needs them in the DB.
+- No inbound/outbound message tables. V-006 and V-007 add them with the
+  provider-message-id unique constraint.
+

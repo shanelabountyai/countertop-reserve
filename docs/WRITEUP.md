@@ -52,8 +52,19 @@ first project's own record of it.
 - **No DST-transition-date fixture** (V-002). A slot inside the one skipped
   or doubled local hour a year resolves to a real instant near that minute.
   Dinner service never spans 1–3am, so this is untested rather than wrong.
+- **Pacing is serialized by an advisory lock per 15-minute bucket** (decided
+  V-003, built V-005). This is the one deliberate check-then-write: a cap on
+  a sum across rows cannot be a constraint. Same-bucket bookings queue
+  behind each other, which is fine at one restaurant and a hot spot only at
+  a scale this product will never reach.
 
 ## Defects Found
+
+- **V-003: the spec's own constraint would have double-seated tables.** A
+  "unique constraint on (table, turn window)" only rejects *identical*
+  windows. With 75/90/120-minute turns, a 7:00 and a 7:30 booking on one
+  table both pass. Caught at the schema review, before any migration was
+  written. The mechanism is an exclusion constraint on overlapping ranges.
 
 - **V-002: a fixture that could not fail.** The "last table" test proved a
   combination is blocked when one member table is taken, but it booked the
