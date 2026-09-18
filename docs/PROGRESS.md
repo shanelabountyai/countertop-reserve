@@ -583,3 +583,5 @@ day dropped and STOP still acknowledged; the limit resetting the next day.
 - The daily count reads `statusChangedAt`, so a text sent at 23:59 and
   delivered at 00:01 counts toward the next day. Accepted; add `sentAt`
   if the limit ever has to be exact.
+
+V-009 committed at 0e5723e.
