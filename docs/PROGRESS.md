@@ -202,3 +202,5 @@ V-002 committed at 448f0a0.
 - No inbound/outbound message tables. V-006 and V-007 add them with the
   provider-message-id unique constraint.
 
+
+V-003 committed at 2d136c8.
