@@ -103,9 +103,12 @@ model Reservation {
   status          String
   createdAt       DateTime @db.Timestamptz(3)
   statusChangedAt DateTime @db.Timestamptz(3)
+  /// 128 random bits, base64url. The manage link's only credential (P0-5).
+  manageToken     String   @unique
 
-  holds  TableHold[]
-  events ReservationEvent[]
+  holds    TableHold[]
+  events   ReservationEvent[]
+  messages OutboundMessage[]
 
   @@index([businessDay, startAt])
   @@index([guestPhone])
@@ -143,4 +146,29 @@ model ReservationEvent {
   reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Restrict)
 
   @@index([reservationId, at])
+}
+
+/// The outbound queue (P0-5). `body` is the RENDERED text, snapshotted at
+/// queue time and sent verbatim — never re-rendered from a template.
+/// One row per (reservation, kind): a retry cannot text a guest twice.
+model OutboundMessage {
+  id                String   @id @default(uuid()) @db.Uuid
+  reservationId     String   @db.Uuid
+  /// MESSAGE_KINDS (CHECK)
+  kind              String
+  /// Snapshot of the guest's number at queue time.
+  toPhone           String
+  body              String
+  /// DELIVERY_STATUSES (CHECK); sent/delivered require a provider id,
+  /// failed requires a reason.
+  status            String
+  providerMessageId String?  @unique
+  failureReason     String?
+  createdAt         DateTime @db.Timestamptz(3)
+  statusChangedAt   DateTime @db.Timestamptz(3)
+
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+
+  @@unique([reservationId, kind])
+  @@index([status, createdAt])
 }

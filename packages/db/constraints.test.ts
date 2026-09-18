@@ -16,6 +16,7 @@ async function book(tableIds: string[], [h, m]: [number, number], turnMinutes = 
   return prisma.reservation.create({
     data: {
       idempotencyKey: key,
+      manageToken: key,
       businessDay: '2026-07-04',
       startAt: start,
       partySize: 2,

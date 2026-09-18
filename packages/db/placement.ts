@@ -17,6 +17,8 @@
 
 import {
   availability,
+  confirmationBody,
+  DEFAULT_TEMPLATES,
   HOLDS_TABLES,
   invalidGuestField,
   plusMs,
@@ -27,12 +29,23 @@ import {
   type GuestFields,
   type InvalidField,
   type Schedule,
+  type Templates,
   type TurnBands,
 } from '@reserve/core';
 import { Prisma, prisma, type Reservation } from './index';
+import { newManageToken } from './messages';
 
 /** Restaurant config that is not in the database yet (V-011 moves the schedule). */
-export type PlacementConfig = { schedule: Schedule; overSeatCap: number; turnBands?: TurnBands };
+export type PlacementConfig = {
+  schedule: Schedule;
+  overSeatCap: number;
+  turnBands?: TurnBands;
+  /** The name the confirmation text opens with. */
+  restaurant: string;
+  /** The manage link is `${manageBaseUrl}/${token}`. */
+  manageBaseUrl: string;
+  templates?: Templates;
+};
 
 export type PlaceRequest = GuestFields & {
   /** Client-generated; a retry with the same key gets the same reservation back. */
@@ -111,6 +124,17 @@ async function allocate(tx: Prisma.TransactionClient, req: PlaceRequest, config:
 
   const turn = turnMinutes(req.partySize, bands);
   const endAt = plusMs(req.startAt, turn * 60_000);
+  const manageToken = newManageToken();
+  // Rendered once, here, and stored: the snapshot rule for messages. Too long
+  // to text throws, and the booking rolls back with it.
+  const body = confirmationBody({
+    template: (config.templates ?? DEFAULT_TEMPLATES).confirmation,
+    restaurant: config.restaurant,
+    timezone: config.schedule.timezone,
+    startAt: req.startAt,
+    partySize: req.partySize,
+    link: `${config.manageBaseUrl}/${manageToken}`,
+  });
   for (const unit of slot.units) {
     await tx.$executeRaw`SAVEPOINT unit`;
     try {
@@ -129,11 +153,18 @@ async function allocate(tx: Prisma.TransactionClient, req: PlaceRequest, config:
           status: 'booked',
           createdAt: req.now,
           statusChangedAt: req.now,
+          manageToken,
           holds: { create: unit.tableIds.map((tableId) => ({ tableId, startAt: req.startAt, endAt })) },
         },
       });
       await tx.reservationEvent.create({
         data: { reservationId: reservation.id, at: req.now, fromStatus: null, toStatus: 'booked', source: req.source },
+      });
+      // Queued in the booking's transaction: no booking without its
+      // confirmation, no confirmation without its booking. A replay returns
+      // before reaching here, and (reservation, kind) is unique regardless.
+      await tx.outboundMessage.create({
+        data: { reservationId: reservation.id, kind: 'confirmation', toPhone: req.guestPhone, body, status: 'queued', createdAt: req.now, statusChangedAt: req.now },
       });
       return { ok: true, reservation, replayed: false };
     } catch (e) {

@@ -135,3 +135,24 @@ same reservation rather than creating a second one. Each booking stores its
 own copy of what was agreed: name, phone number, party size, time, table,
 how long the table is held, a short note (140 characters at most), and
 flags for allergies, occasions and accessibility needs.
+
+## V-006 — The confirmation text
+
+Every booking now comes with a text message, written at the moment the
+table is booked: "Firebird Kitchen: table for 4 on Fri, Oct 2 at 7:00 PM.
+Reply C to confirm, X to cancel, CHANGE to change. Manage: <link>". The
+booking and its text are saved together. There is never a booking without
+its confirmation, or a confirmation for a booking that did not happen.
+
+The text is kept exactly as sent. If the restaurant later rewords its
+messages, changes its tables or changes how long a table is held, the
+guest's record still shows what they were actually told. Each message is
+checked to fit in two text-message segments, since a third costs money
+and can arrive out of order. The link carries a private code that cannot
+be guessed.
+
+The system also tracks what happened to each text: waiting, sent,
+delivered or failed, with the carrier's reason when it fails. A guest is
+never texted the same confirmation twice, even if the send is retried or
+two senders run at once.
+

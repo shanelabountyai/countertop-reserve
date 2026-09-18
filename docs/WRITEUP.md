@@ -82,6 +82,16 @@ first project's own record of it.
   overlap, so the guest gets "no longer available" and nothing is
   double-seated.
 
+- **A confirmation is sent inside the transaction that claims it**
+  (V-006). The carrier call holds a row lock for one network round trip.
+  That is fine with a mock and one restaurant. With a slow real carrier,
+  claim first, then send, with a `sending` state.
+- **Date and time formatting strips U+202F** (V-006). Newer ICU puts a
+  narrow no-break space before "PM". That character is not in the GSM-7
+  alphabet, so one of it turns the whole text into UCS-2, where a segment
+  holds 70 characters instead of 160. The confirmation would go from two
+  segments to three with nothing visibly different.
+
 ## Defects Found
 
 - **V-003: the spec's own constraint would have double-seated tables.** A
@@ -106,6 +116,13 @@ first project's own record of it.
   first. The code was right and the fixture was not. Its starts now span 60
   minutes, so every pair overlaps. Lesson: before asserting "exactly one
   wins", check that every pair of contenders actually conflicts.
+
+- **V-006: a concurrency test that could not fail.** "Four dispatchers send
+  each message once" passed with the row lock deleted. The mock carrier
+  answered instantly, so each dispatcher finished before the next one read
+  the queue. Found by mutating the lock before commit. The test's carrier
+  now waits 50 ms, and without the lock it sends 12 texts for 3 messages.
+  Lesson: a race test needs the race window held open on purpose.
 
 ## Skills Learned / Functions Unlocked
 

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { zonedTimeToInstant, type Schedule } from '@reserve/core';
+import { DEFAULT_TEMPLATES, segments, zonedTimeToInstant, type Schedule } from '@reserve/core';
 import { prisma } from './index';
+import { dispatchQueued, mockProvider, recordDelivery } from './messages';
 import { placeReservation, type PlaceRequest, type PlacementConfig } from './placement';
 import { resetDatabase } from './testing/index';
 
@@ -18,6 +19,8 @@ const config = (pacingCap = 40): PlacementConfig => ({
     blackouts: [],
   } satisfies Schedule,
   overSeatCap: 2,
+  restaurant: 'Firebird Kitchen',
+  manageBaseUrl: 'https://firebird.example/m',
 });
 
 let n = 0;
@@ -145,7 +148,7 @@ describe('the last table, contended (P0-3)', () => {
   async function invisibleHoldOn(tableId: string) {
     await prisma.reservation.create({
       data: {
-        idempotencyKey: `race-${tableId}`, businessDay: DAY, startAt: at(19), partySize: 2, turnMinutes: 75,
+        idempotencyKey: `race-${tableId}`, manageToken: `race-${tableId}`, businessDay: DAY, startAt: at(19), partySize: 2, turnMinutes: 75,
         tableIds: [tableId], guestName: 'Racer', guestPhone: '+15035550199', status: 'cancelled',
         createdAt: NOW, statusChangedAt: NOW,
         holds: { create: [{ tableId, startAt: at(19), endAt: at(20, 15) }] },
@@ -196,5 +199,149 @@ describe('idempotency key (P0-3)', () => {
     expect(ids.size).toBe(1);
     expect(results.every((r) => r.ok)).toBe(true);
     expect(await counts()).toEqual({ reservations: 1, holds: 1, events: 1 });
+  });
+});
+
+describe('confirmation text (P0-5)', () => {
+  const booked = async (over: Partial<PlaceRequest> = {}, cfg = config()) => {
+    const res = await placeReservation(request(over), cfg);
+    if (!res.ok) throw new Error(res.reason);
+    return res.reservation;
+  };
+
+  it('queues one rendered confirmation with the booking, linking a 128-bit token', async () => {
+    await floor([['T1', 4]]);
+    const r = await booked({ partySize: 3 });
+    expect(r.manageToken).toMatch(/^[A-Za-z0-9_-]{22}$/); // 16 bytes base64url
+    const msgs = await prisma.outboundMessage.findMany();
+    expect(msgs).toEqual([
+      expect.objectContaining({
+        reservationId: r.id,
+        kind: 'confirmation',
+        toPhone: '+15035550100',
+        status: 'queued',
+        providerMessageId: null,
+        body: `Firebird Kitchen: table for 3 on Fri, Oct 2 at 7:00 PM. Reply C to confirm, X to cancel, CHANGE to change. Manage: https://firebird.example/m/${r.manageToken}`,
+      }),
+    ]);
+    expect(segments(msgs[0]!.body)).toBeLessThanOrEqual(2);
+  });
+
+  it('tokens are unique per reservation', async () => {
+    await floor([['T1', 2], ['T2', 2]]);
+    const [a, b] = [await booked(), await booked()];
+    expect(a.manageToken).not.toBe(b.manageToken);
+  });
+
+  it('a replayed booking queues nothing more; a concurrent double-submit queues exactly one', async () => {
+    await floor([['T1', 2], ['T2', 2]]);
+    await booked({ idempotencyKey: 'dbl' });
+    await booked({ idempotencyKey: 'dbl' });
+    await Promise.all(Array.from({ length: 4 }, () => placeReservation(request({ idempotencyKey: 'burst' }), config())));
+    expect(await prisma.outboundMessage.count()).toBe(2);
+  });
+
+  it('a refusal queues nothing', async () => {
+    await floor([['T1', 2]]);
+    await booked();
+    expect((await placeReservation(request(), config())).ok).toBe(false);
+    expect(await prisma.outboundMessage.count()).toBe(1);
+  });
+
+  it('a body too long to text rolls the booking back — no table held, nothing queued', async () => {
+    await floor([['T1', 2]]);
+    await expect(placeReservation(request(), { ...config(), restaurant: 'F'.repeat(200) })).rejects.toThrow(/segments/);
+    expect(await counts()).toEqual({ reservations: 0, holds: 0, events: 0 });
+    expect(await prisma.outboundMessage.count()).toBe(0);
+  });
+
+  it('the database refuses a second confirmation for the same reservation', async () => {
+    await floor([['T1', 2]]);
+    const r = await booked();
+    await expect(
+      prisma.outboundMessage.create({
+        data: { reservationId: r.id, kind: 'confirmation', toPhone: r.guestPhone, body: 'again', status: 'queued', createdAt: NOW, statusChangedAt: NOW },
+      }),
+    ).rejects.toMatchObject({ code: 'P2002' });
+  });
+
+  it('snapshot: template, floor plan and turn edits after booking change nothing stored or sent', async () => {
+    await floor([['T1', 2]]);
+    const r = await booked();
+    const before = { reservation: await prisma.reservation.findUniqueOrThrow({ where: { id: r.id } }), message: await prisma.outboundMessage.findFirstOrThrow() };
+
+    await prisma.diningTable.update({ where: { id: 'T1' }, data: { seats: 3, section: 'patio' } });
+    const edited = { ...config(), restaurant: 'Firebird', turnBands: [{ upToParty: Infinity, minutes: 45 }], templates: { ...DEFAULT_TEMPLATES, confirmation: 'EDITED {date} {time} {link}' } };
+    await booked({ startAt: at(20, 15) }, edited); // the edited config is live and in use
+
+    expect(await prisma.reservation.findUniqueOrThrow({ where: { id: r.id } })).toEqual(before.reservation);
+    const { provider, sent } = mockProvider();
+    await dispatchQueued(provider, NOW);
+    expect(sent.find((m) => m.id === before.message.id)?.body).toBe(before.message.body);
+    expect(sent.find((m) => m.id !== before.message.id)?.body).toMatch(/^EDITED /);
+  });
+});
+
+describe('delivery state (P0-5)', () => {
+  const LATER = zonedTimeToInstant(DAY, 12 * 60 + 1, TZ);
+
+  it('queued → sent → delivered, with the provider id stored', async () => {
+    await floor([['T1', 2]]);
+    await placeReservation(request(), config());
+    const { provider, sent } = mockProvider();
+    const [m] = await dispatchQueued(provider, NOW);
+    expect(m).toMatchObject({ status: 'sent', providerMessageId: sent[0]!.providerMessageId, statusChangedAt: NOW });
+    expect(await recordDelivery(sent[0]!.providerMessageId, { status: 'delivered' }, LATER)).toBe(true);
+    expect(await prisma.outboundMessage.findFirstOrThrow()).toMatchObject({ status: 'delivered', statusChangedAt: LATER });
+  });
+
+  it('a retried dispatch never texts the guest twice', async () => {
+    await floor([['T1', 2]]);
+    await placeReservation(request(), config());
+    const { provider, sent } = mockProvider();
+    await dispatchQueued(provider, NOW);
+    await dispatchQueued(provider, NOW);
+    expect(sent).toHaveLength(1);
+  });
+
+  it('concurrent dispatchers send each message exactly once', async () => {
+    await floor([['T1', 2], ['T2', 2], ['T3', 2]]);
+    for (const h of [17, 18, 19]) await placeReservation(request({ startAt: at(h) }), config());
+    const { provider: fast, sent } = mockProvider();
+    // A slow carrier, so every dispatcher has read the queue before any commits.
+    const provider = { send: async (m: Parameters<typeof fast.send>[0]) => (await new Promise((r) => setTimeout(r, 50)), fast.send(m)) };
+    await Promise.all(Array.from({ length: 4 }, () => dispatchQueued(provider, NOW)));
+    expect(sent).toHaveLength(3);
+    expect(new Set(sent.map((m) => m.id)).size).toBe(3);
+  });
+
+  it('a provider refusal is queued → failed, with the reason', async () => {
+    await floor([['T1', 2]]);
+    await placeReservation(request(), config());
+    const { provider, sent } = mockProvider(new Set(['+15035550100']));
+    await dispatchQueued(provider, NOW);
+    expect(sent).toHaveLength(0);
+    expect(await prisma.outboundMessage.findFirstOrThrow()).toMatchObject({ status: 'failed', failureReason: 'unreachable', providerMessageId: null });
+  });
+
+  it('sent → failed from the callback; a redelivered or late callback changes nothing', async () => {
+    await floor([['T1', 2]]);
+    await placeReservation(request(), config());
+    const { provider, sent } = mockProvider();
+    await dispatchQueued(provider, NOW);
+    const id = sent[0]!.providerMessageId;
+    expect(await recordDelivery(id, { status: 'failed', reason: 'carrier: 30006' }, LATER)).toBe(true);
+    expect(await recordDelivery(id, { status: 'failed', reason: 'carrier: 30006' }, LATER)).toBe(false);
+    expect(await recordDelivery(id, { status: 'delivered' }, LATER)).toBe(false);
+    expect(await recordDelivery('mock-unknown', { status: 'delivered' }, LATER)).toBe(false);
+    expect(await prisma.outboundMessage.findFirstOrThrow()).toMatchObject({ status: 'failed', failureReason: 'carrier: 30006' });
+  });
+
+  it('the database refuses a sent row without a provider id and a failed row without a reason', async () => {
+    await floor([['T1', 2]]);
+    await placeReservation(request(), config());
+    await expect(prisma.outboundMessage.updateMany({ data: { status: 'sent' } })).rejects.toThrow(/outbound_sent_has_provider_id/);
+    await expect(prisma.outboundMessage.updateMany({ data: { status: 'failed' } })).rejects.toThrow(/outbound_failed_has_reason/);
+    await expect(prisma.outboundMessage.updateMany({ data: { status: 'bounced' } })).rejects.toThrow(/outbound_status_known/);
   });
 });

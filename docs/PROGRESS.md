@@ -308,3 +308,61 @@ V-004 committed at 4a38ff5.
 
 V-005 committed at 3d9fa06.
 Fixture fix (CI-found, see WRITEUP) at 55ffba2.
+
+## V-006 — Confirmation text: outbound templates & delivery state
+
+**Built** (`packages/core/messages.ts`, `packages/db/messages.ts`, placement):
+- `messages.ts` (pure): `MESSAGE_KINDS` (`confirmation`),
+  `DELIVERY_STATUSES` with `canDeliver`, `REPLY_KEYS` (the text V-007 will
+  parse), `DEFAULT_TEMPLATES`, `render` over six named slots (restaurant,
+  date, time, party, link, replyKeys) that throws on an unknown slot,
+  `segments` (GSM-7 basic + extension table, else UCS-2), and
+  `confirmationBody`, which formats date and time in the restaurant timezone
+  and throws above 2 segments or 320 chars.
+- `placeReservation` mints a 128-bit base64url `manageToken`, renders the
+  confirmation, and creates a `queued` `OutboundMessage` in the booking's
+  own transaction. A replay returns before that point. A body too long to
+  text throws, so the booking rolls back with it.
+- `db/messages.ts`: the `MessageProvider` interface, `mockProvider`
+  (records sends, refuses listed numbers), `dispatchQueued` (claims `queued`
+  rows with `FOR UPDATE SKIP LOCKED`, moves each to `sent` + provider id or
+  `failed` + reason) and `recordDelivery` (the carrier callback, a
+  conditional update from `sent` only, so a redelivery is a no-op).
+- Migration `outbound_message`: the table, UNIQUE `(reservationId, kind)`,
+  UNIQUE `providerMessageId`, CHECKs for kind, status, body ≤ 320, "sent
+  needs a provider id" and "failed needs a reason". `manageToken` is added
+  nullable, backfilled, then made NOT NULL, so it applies over existing rows.
+- Tests: 34 in `messages.test.ts` (segment boundaries at 160/161/306/307 and
+  70/71/134/135, extension chars, a single U+202F forcing UCS-2, the body
+  in LA time under any process TZ, over-length refusals, all 16 delivery
+  transitions). 13 new in `placement.test.ts`: queued with the booking,
+  unique tokens, replay and concurrent double-submit queue one each,
+  refusals queue nothing, over-length rolls back, a second confirmation is
+  refused by the DB, the snapshot regression (edit template, restaurant
+  name, turn bands and floor plan, then dispatch: the old row sends its
+  stored body byte-for-byte), and the delivery paths including concurrent
+  dispatchers and a redelivered callback.
+- Mutation-checked: removing `FOR UPDATE SKIP LOCKED` made 4 dispatchers
+  send 12 texts for 3 messages. The first version of that test could not
+  fail, because the mock answered too fast to open the race; it now uses a
+  50 ms carrier.
+
+**Decided:**
+- **The rendered body lives on `OutboundMessage`, not on `Reservation`.**
+  One row per (reservation, kind) is both the snapshot and the idempotency
+  key. The PRD says "on the reservation"; the row belongs to it.
+- **Templates are config (`PlacementConfig.templates`) until P1-7's editor.**
+  Nothing reads a template after rendering, so moving them into a table
+  later changes no history.
+- **The manage link is `${manageBaseUrl}/${token}`** and the token is the
+  only credential. V-012 builds the page.
+- **Delivery is at-most-once per row.** The provider call runs inside the
+  claiming transaction (`ponytail:` in `db/messages.ts`).
+
+**Left behind:**
+- Reminders (T-24h / T-3h same-day) moved to V-008, which owns the sweep.
+- The failed-send badge on the host's row moved to V-010.
+- STOP, quiet hours and the rate limit are V-009. Dispatch does not check
+  opt-out yet.
+- Nothing calls `dispatchQueued` on a schedule yet; V-008's sweep will.
+

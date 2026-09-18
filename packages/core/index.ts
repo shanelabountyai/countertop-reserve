@@ -9,3 +9,4 @@ export * from './availability';
 export * from './time';
 export * from './lifecycle';
 export * from './booking';
+export * from './messages';
