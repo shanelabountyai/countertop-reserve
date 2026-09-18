@@ -366,3 +366,6 @@ Fixture fix (CI-found, see WRITEUP) at 55ffba2.
   opt-out yet.
 - Nothing calls `dispatchQueued` on a schedule yet; V-008's sweep will.
 
+
+
+V-006 committed at a29273d.
