@@ -280,8 +280,8 @@ V-004 committed at 4a38ff5.
 - `placement.test.ts`, 16 tests: the full snapshot plus holds plus event, a
   combination holding both members, engine refusals that write nothing, five
   invalid fields, an emoji note at the cap, 8 concurrent bookings on the last
-  table (1 reservation, 7 `full`, 1 hold, 1 event), 6 overlapping bookings in
-  *different* buckets (exactly one wins), a deterministic 23P01 path (both
+  table (1 reservation, 7 `full`, 1 hold, 1 event), 5 pairwise-overlapping bookings
+  in *different* buckets (exactly one wins), a deterministic 23P01 path (both
   "refused, no orphan" and "fell through to the next unit"), pacing under
   concurrency (5 deuces, cap 4, 2 booked), and sequential and concurrent
   double-submits returning the same body.

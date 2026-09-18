@@ -98,6 +98,15 @@ first project's own record of it.
   mutation fails. Lesson: a test for "every member" needs its example to be
   a member other than the first.
 
+- **V-005: a concurrency fixture that was wrong about overlap.** The
+  "different buckets, exactly one wins" test raced six starts from 18:30 to
+  19:45 on one table with a 75-minute turn. 18:30 ends at 19:45, so that
+  pair is back-to-back and both may rightly book. It passed locally and
+  failed on CI's second unit run, depending on which request committed
+  first. The code was right and the fixture was not. Its starts now span 60
+  minutes, so every pair overlaps. Lesson: before asserting "exactly one
+  wins", check that every pair of contenders actually conflicts.
+
 ## Skills Learned / Functions Unlocked
 
 *(filled in as phases land.)*

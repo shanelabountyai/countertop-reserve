@@ -130,7 +130,9 @@ describe('the last table, contended (P0-3)', () => {
 
   it('overlapping bookings in DIFFERENT buckets: the constraint decides, exactly one wins', async () => {
     await floor([['T1', 2]]);
-    const starts = [at(19), at(19, 15), at(19, 30), at(19, 45), at(18, 45), at(18, 30)];
+    // Every pair overlaps: the spread (60 min) is under the 75-min turn. An
+    // 18:30 and a 19:45 would be back-to-back, and both could rightly win.
+    const starts = [at(19), at(19, 15), at(19, 30), at(18, 45), at(18, 30)];
     const results = await Promise.all(starts.map((startAt) => placeReservation(request({ startAt }), config())));
     expect(results.filter((r) => r.ok)).toHaveLength(1);
     for (const r of results) if (!r.ok) expect(['full', 'no_longer_available']).toContain(r.reason);
