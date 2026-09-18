@@ -115,3 +115,23 @@ The host's 5-second undo for seat, no-show and cancel is a new entry in the
 history, never an erasure. The tests check every combination of starting
 stage, target stage and actor (243 of them) against a list written straight
 from the spec.
+
+
+## V-005 — Booking a table, safely, when everyone wants the same one
+
+A booking now picks its table on the server at the moment it is saved.
+The guest never chooses from a list that might already be stale. It tries
+the best-fitting table first, then the next best, and the database has the
+final say on each one. If eight people press "book" for the last 7:00 table
+at the same instant, one gets it and seven are told it is no longer
+available. Nothing is left half-booked.
+
+The kitchen's per-15-minute cover limit holds under the same pressure.
+Five simultaneous bookings for a slot with room for four covers get exactly
+two tables, even with five tables free.
+
+Pressing "book" twice, or a phone retrying on a bad connection, returns the
+same reservation rather than creating a second one. Each booking stores its
+own copy of what was agreed: name, phone number, party size, time, table,
+how long the table is held, a short note (140 characters at most), and
+flags for allergies, occasions and accessibility needs.

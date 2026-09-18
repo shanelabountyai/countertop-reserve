@@ -10,12 +10,14 @@
     "studio": "prisma studio"
   },
   "dependencies": {
-    "@prisma/client": "^6"
+    "@prisma/client": "^6",
+    "@reserve/core": "*"
   },
   "devDependencies": {
     "prisma": "^6"
   },
   "exports": {
-    ".": "./index.ts"
+    ".": "./index.ts",
+    "./placement": "./placement.ts"
   }
 }

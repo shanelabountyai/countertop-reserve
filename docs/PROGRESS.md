@@ -256,3 +256,52 @@ V-003 committed at 2d136c8.
   allocation), not an edge out of `released`. V-010 builds that.
 
 V-004 committed at 4a38ff5.
+
+## V-005 — Booking placement, allocated under the constraint
+
+**Built** (`packages/db/placement.ts`, `packages/core/booking.ts`):
+- `placeReservation(req, config)`: guest-field validation, an idempotency
+  replay, then one transaction. The transaction takes
+  `pg_advisory_xact_lock(<start minute>)` (the pacing bucket), reads the
+  floor plan and the `HOLDS_TABLES` reservations for the day *after* the
+  lock, and runs `availability()`. It then tries each fitting unit in the
+  engine's order under a `SAVEPOINT`. A `table_hold_no_overlap` violation
+  rolls back to the savepoint and tries the next unit. When every unit is
+  taken, it returns `no_longer_available`. The reservation, its holds and
+  the `booked` event commit together or not at all.
+- Refusals carry the engine's reasons (`past`, `closed`, `full`, `pacing`,
+  `too_large`, `too_small`), plus `no_longer_available` and
+  `invalid` + field. An off-grid time is `closed`.
+- `booking.ts` (pure): `isE164`, `NOTE_MAX` (140, counted in code points to
+  match Postgres `char_length`), `TAG_KINDS`, and `invalidGuestField`. The
+  web form (V-012) will import the same functions.
+- Migration `reservation_note_tags`: `note` and `tags` columns, plus CHECKs
+  for the note cap and the tag allowlist.
+- `placement.test.ts`, 16 tests: the full snapshot plus holds plus event, a
+  combination holding both members, engine refusals that write nothing, five
+  invalid fields, an emoji note at the cap, 8 concurrent bookings on the last
+  table (1 reservation, 7 `full`, 1 hold, 1 event), 6 overlapping bookings in
+  *different* buckets (exactly one wins), a deterministic 23P01 path (both
+  "refused, no orphan" and "fell through to the next unit"), pacing under
+  concurrency (5 deuces, cap 4, 2 booked), and sequential and concurrent
+  double-submits returning the same body.
+- Mutation-checked: removing the advisory lock failed the pacing test in 3
+  of 3 runs.
+
+**Decided:**
+- **The floor plan is read from the DB inside the transaction; the schedule,
+  over-seat cap and turn bands stay config** (`PlacementConfig`) until V-011
+  puts them in tables.
+- **Tags are kinds only.** Details go in the note. See WRITEUP.
+- **The lock key is the slot's start minute**, because slots sit on the
+  15-minute grid, so a bucket is one start instant. The single-key form is
+  used because nothing else here takes advisory locks. A change request
+  (V-007) must take the same lock for its new bucket.
+- **An idempotency replay returns the stored row without comparing the
+  request** (`ponytail:` in placement.ts).
+
+**Left behind:**
+- No consent capture (V-009) and no confirmation message (V-006).
+- No web route yet. V-012 wires the guest form to `placeReservation`, and
+  V-010 wires host bookings (`source: 'host'`).
+

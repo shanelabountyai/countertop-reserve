@@ -68,6 +68,20 @@ first project's own record of it.
   constraint, and a walk-in seated in the 5-second window wins. That is
   correct, and V-010 has to show it as a refusal, not an error.
 
+- **Tags are kinds, not labels** (V-005). A tag is `allergy`, `occasion`
+  or `accessibility`, enforced by a CHECK. The detail ("shellfish") goes in
+  the 140-character note. The host view styles by kind (P0-9), so that is
+  the only part it needs to be structured.
+- **An idempotency replay does not compare the request** (V-005). A second
+  submit with the same key gets the stored reservation back, even if the
+  body differs. That is right for a double-click. Compare fields if a
+  client ever reuses keys across different bookings.
+- **Placement reads the occupied set by business day** (V-005). A service
+  that runs past midnight would not see the previous day's late tables in
+  the availability read. The exclusion constraint still refuses the
+  overlap, so the guest gets "no longer available" and nothing is
+  double-seated.
+
 ## Defects Found
 
 - **V-003: the spec's own constraint would have double-seated tables.** A

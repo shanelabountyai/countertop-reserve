@@ -93,6 +93,11 @@ model Reservation {
   guestName      String
   /// E.164.
   guestPhone     String
+  /// Guest note, ≤140 chars (CHECK).
+  note           String?
+  /// Tag KINDS only — allergy | occasion | accessibility (CHECK). The detail
+  /// ("shellfish") goes in the note; the host view styles by kind (P0-9).
+  tags           String[] @default([])
   /// ponytail: plain text until V-004's lifecycle module owns the list; a
   /// DB enum here would be a second source of truth.
   status          String
