@@ -58,6 +58,16 @@ first project's own record of it.
   behind each other, which is fine at one restaurant and a hot spot only at
   a scale this product will never reach.
 
+- **`released` only from `booked`, and it is terminal** (V-004). The PRD
+  contradicts itself here: P0-4's state line allows `confirmed → released`,
+  and P0-7 releases only unconfirmed reservations. P0-7 wins, because
+  releasing a guest who replied C is the defect. A released guest who shows
+  up anyway is seated as a walk-in with a new allocation.
+- **Undoing a no-show or cancel can fail** (V-004). Those transitions delete
+  the table holds, so the undo has to re-acquire them under the exclusion
+  constraint, and a walk-in seated in the 5-second window wins. That is
+  correct, and V-010 has to show it as a refusal, not an error.
+
 ## Defects Found
 
 - **V-003: the spec's own constraint would have double-seated tables.** A

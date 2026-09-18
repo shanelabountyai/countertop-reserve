@@ -47,3 +47,9 @@ export function zonedTimeToInstant(day: string, minuteOfDay: number, timezone: s
   // eslint-disable-next-line no-restricted-syntax
   return new Date(naiveMs - second * 60_000);
 }
+
+/** An instant shifted by a duration — arithmetic on epoch ms, never a parse. */
+export function plusMs(at: Date, ms: number): Date {
+  // eslint-disable-next-line no-restricted-syntax
+  return new Date(at.getTime() + ms);
+}

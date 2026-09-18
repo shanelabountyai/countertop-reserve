@@ -18,7 +18,7 @@ npm run gate    # lint, typecheck, build, e2e, unit — in that order
 ## Phase 2 — the reservation as a persisted object
 
 - [x] **V-003** — Data model + hand-written migrations *(P0-3 allocation constraint, P0-11)* — exclusion constraint on `(table, [start, end))` overlap (decided at review over a literal unique, see PROGRESS), idempotency-key unique constraint, append-only event-log trigger. **Pause for schema review before writing it** — the PRD names this the decision the whole product builds against.
-- [ ] **V-004** — Reservation lifecycle state machine *(P0-4)* — one module in `packages/core`, full transition table (`booked/confirmed/seated/completed`, `cancelled`, `no_show`, `released`, `waitlisted`), every reader-facing status list exported from it, `now` as a parameter.
+- [x] **V-004** — Reservation lifecycle state machine *(P0-4)* — one module in `packages/core`, full transition table (`booked/confirmed/seated/completed`, `cancelled`, `no_show`, `released`, `waitlisted`), every reader-facing status list exported from it, `now` as a parameter.
 - [ ] **V-005** — Booking placement, allocated under the constraint *(P0-3)* — server-side allocation inside the transaction, concurrent-booking test on the last table (exactly one reservation, N-1 clean refusals, zero orphan holds), idempotency key honoured, full snapshot captured.
 
 ## Phase 3 — the message channel

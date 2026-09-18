@@ -204,3 +204,53 @@ V-002 committed at 448f0a0.
 
 
 V-003 committed at 2d136c8.
+
+## V-004 — Reservation lifecycle state machine
+
+**Built** (`packages/core/lifecycle.ts`, pure, `now` is a parameter):
+- `STATUSES` plus a `TRAITS` record (`holdsTables`, `upcoming`, `showed`,
+  `terminal`) and an `EDGES` record (from → to → which actors may drive it).
+  Both are `Record<Status, …>`, so a new status does not compile until it is
+  classified and given its edges. The reader lists (`HOLDS_TABLES`,
+  `UPCOMING`, `SHOWED`, `TERMINAL`) are derived from `TRAITS`, never written
+  out by hand. The availability engine's `HeldReservation` doc now points at
+  `HOLDS_TABLES`.
+- `transition(r, to, actor, now, policy)` returns `{ok, from, to, tables}`
+  or `{ok:false, reason}`. The reasons are `no_change`, `terminal`,
+  `no_edge`, `actor`, `too_early` (no-show inside the grace period),
+  `too_late` (a guest confirm or cancel at or after the start). `tables` is
+  `keep | release | acquire | none`, derived from `holdsTables` on either
+  side, so V-005/V-008/V-010 know whether to delete or allocate `TableHold`
+  rows in the same transaction.
+- `revert(r, lastEvent, now, policy)` is the logged undo for the host's
+  seat, no-show and cancel inside `undoSeconds` (5). It goes back to the
+  event's `fromStatus`. It refuses guest and system events, and refuses a
+  stale event whose status has moved on.
+- `parseStatus` is the only way in from the plain-text DB column.
+- `plusMs` was added to `time.ts`, so the `new Date(<ms>)` lint exception
+  stays in one file.
+- Tests: all 9×9×3 `(from, to, actor)` triples are checked against a
+  hand-written VALID list taken from the PRD, not derived from the module.
+  15 invalid transitions are asserted by reason, plus both boundary minutes,
+  the table effects, the derived lists, and revert. Mutation-checked: adding
+  `confirmed → released` fails two tests.
+
+**Decided:**
+- **`released` only from `booked`.** The PRD's P0-4 state line says
+  `booked|confirmed → released`, but P0-7 releases *unconfirmed*
+  reservations. Auto-releasing a guest who replied C would be the defect.
+  P0-7 wins.
+- **`released` is terminal.** Rebooking is a new booking with a new
+  allocation (PRD Open Question, resolved: V1 yes via the re-book link).
+- **The actor is part of the edge.** The inbound SMS is a trust boundary, so
+  the lifecycle itself refuses a guest seating or no-showing themselves. It
+  does not rely on the webhook handler to remember.
+- **Guests cannot confirm or cancel at or after the start time.** Past that
+  point it is the host's call: seat, or no-show after the grace period.
+- `noShowGraceMinutes` defaults to 15, and is a policy value, not a constant.
+
+**Left behind:**
+- The confirmation-deadline check for `released` belongs to V-008. The
+  lifecycle only restricts that edge to `system`.
+- Seating a released guest who shows up anyway is a walk-in (new
+  allocation), not an edge out of `released`. V-010 builds that.

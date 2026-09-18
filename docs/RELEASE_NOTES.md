@@ -94,3 +94,24 @@ The other rule the database now enforces: the reservation history can only
 be added to, never edited or deleted. Undoing a change writes a new "undo"
 entry, so the record of what happened is always complete.
 
+
+## V-004 — One rulebook for what can happen to a reservation
+
+A reservation moves through a fixed set of stages: booked, confirmed,
+seated, completed. It can also end as cancelled, no-show or released (never
+confirmed in time), and a walk-in can sit on the waitlist. All of these
+rules now live in one place. The host screen, the text-message replies,
+the availability search and the reports all read their lists from it, so
+they cannot drift apart.
+
+The rules also say *who* may do what. A guest texting in can confirm or
+cancel their own booking, but cannot mark themselves seated. Only the
+automatic sweep can release an unconfirmed table, and it can never release
+a guest who has confirmed. Every refusal comes back with a specific reason,
+such as "too early to call a no-show" or "that reservation is already
+finished," so the screen can say something true.
+
+The host's 5-second undo for seat, no-show and cancel is a new entry in the
+history, never an erasure. The tests check every combination of starting
+stage, target stage and actor (243 of them) against a list written straight
+from the spec.

@@ -40,8 +40,8 @@ export type Schedule = {
  * snapshotted tables and turn — never recomputed from today's floor plan or
  * turn bands (snapshot rule).
  *
- * ponytail: the caller decides which reservations hold tables. V-004's status
- * module becomes the one source of that list.
+ * The caller passes only reservations whose status is in `HOLDS_TABLES`
+ * (lifecycle.ts) — the one source of the occupied set.
  */
 export type HeldReservation = {
   start: Date;
