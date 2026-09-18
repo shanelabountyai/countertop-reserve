@@ -184,3 +184,24 @@ Moving a booking to a new time or party size now books the new table
 before letting go of the old one. If the new time is not available, the
 original booking stays exactly as it was.
 
+## V-008 — The table a guest forgot about comes back on its own
+
+A booking nobody confirms now lets go of its table at a deadline the
+restaurant sets: three hours before for bookings made in advance, ninety
+minutes for same-day ones, or never, if the restaurant turns it off. The
+moment it is released, the table is bookable again — the test books a
+walk-in into it in the same breath. The guest gets one text saying so, with
+a link to book again.
+
+Guests also get one reminder the day before (or three hours before, if
+they booked late), unless they confirmed recently enough that a reminder
+would be noise. And every text the system queues — confirmations, replies,
+reminders — now actually goes out on a schedule.
+
+The interesting part is what is kept apart. Freeing the table and telling
+the guest are two separate steps, so a message that can't be sent (or,
+next item, shouldn't be sent at 2am) never holds a table hostage. Two
+sweeps running at once release a table once and text once. A guest who
+booked at 6:30 for 7:00 is never released for "failing to confirm" in a
+window they never had, and a guest who texted STOP still loses an
+unconfirmed table on time — they just aren't texted about it.

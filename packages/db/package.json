@@ -20,6 +20,7 @@
     ".": "./index.ts",
     "./placement": "./placement.ts",
     "./inbound": "./inbound.ts",
-    "./messages": "./messages.ts"
+    "./messages": "./messages.ts",
+    "./sweep": "./sweep.ts"
   }
 }

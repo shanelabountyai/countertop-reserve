@@ -6,11 +6,14 @@
 // template, so a template edit after booking can never rewrite history.
 
 /**
- * `confirmation` is sent on booking, one per reservation. The rest are
- * replies to an inbound text (P0-6, Appendix A), one per inbound message.
+ * `confirmation` (on booking), `reminder` and `released` (the deadline sweep)
+ * are owned by the reservation, one each. The rest are replies to an inbound
+ * text (P0-6, Appendix A), one per inbound message.
  */
 export const MESSAGE_KINDS = [
   'confirmation',
+  'reminder',
+  'released',
   'confirmed',
   'cancelled',
   'change_link',
@@ -45,6 +48,9 @@ export type Templates = Record<MessageKind, string>;
 // shrinks a segment from 160 characters to 70.
 export const DEFAULT_TEMPLATES: Templates = {
   confirmation: '{restaurant}: table for {party} on {date} at {time}. {replyKeys} Manage: {link}',
+  // A3 says "tonight", which is wrong for a T-24h reminder; the date is always right.
+  reminder: '{restaurant}: reminder, {party} on {date} at {time}. Reply C to confirm, X if plans changed. {link}',
+  released: "{restaurant}: we released your {date} {time} table since we didn't hear back. Still want it? {bookLink}",
   confirmed: 'Confirmed - {party} on {date} at {time}. See you then. Reply X to cancel or CHANGE to reschedule.',
   cancelled: 'Cancelled - {date} at {time}. Thanks for letting us know. Book again anytime: {bookLink}',
   change_link: 'Change your {date} {time} booking here: {link} - your current table is held until you submit.',

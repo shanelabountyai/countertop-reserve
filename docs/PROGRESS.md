@@ -469,3 +469,71 @@ V-006 committed at a29273d.
 
 
 V-007 committed at a6593a5.
+
+## V-008 — Confirmation deadline, auto-release, and reminders
+
+**Built:**
+- `core/sweep.ts` (pure): `releaseAt`/`shouldRelease` (P0-7) and
+  `reminderAt`/`shouldRemind` (P0-5, A3), with `SweepPolicy` defaults
+  T-3h / T-90m same-day for release and T-24h / T-3h for reminders.
+  `releaseLead: 0` disables auto-release entirely. `core/time.ts` gained
+  `dayOf(instant, tz)`, the instant → restaurant-calendar direction.
+- `core/messages.ts`: `reminder` and `released` kinds with A3/A8 templates,
+  GSM-7, covered by the existing every-template test.
+- `db/sweep.ts`: `sweep(provider, config, now)` runs four passes, each
+  committed on its own. (1) Release: `booked` rows past their deadline are
+  claimed `FOR UPDATE SKIP LOCKED`, go through `transition(…, 'released',
+  'system', now)`, and have their holds deleted plus a `system` event in the
+  same transaction. (2) Release notices: released reservations with no
+  notice yet. (3) Reminders. (4) `dispatchQueued`, so confirmations and
+  inbound replies finally go out on a schedule.
+- `app/api/cron/sweep/route.ts`: GET with `Authorization: Bearer
+  $CRON_SECRET` (Vercel Cron's convention), fails closed with 503 when unset,
+  401 on a wrong token, constant-time compare.
+- Migration `sweep_message_kinds`: widens `outbound_kind_known`. Both new
+  kinds are reservation-owned, so `(reservationId, kind)` unique gives one
+  reminder and one notice per reservation.
+- Tests: core `sweep.test.ts` (21 tests, hand-calculated deadlines, both
+  boundary milliseconds, the 23:30-the-night-before case that a UTC "same
+  day" gets wrong, the 6h confirm window at 5/6/7h). DB `sweep.test.ts` (9):
+  no release at 15:59, release at 16:00 with holds gone and a walk-in into
+  the freed table in the same session, confirmed untouched, 0 disables, two
+  overlapping sweeps release once and notify once, notice sent once with the
+  re-book link, STOP still releases but sends no notice, one reminder at
+  T-24h exactly, the confirmation dispatched. e2e `sweep.spec.ts`: 401
+  twice, then 200 twice against the production build.
+
+**Decided:**
+- **The notice is its own pass, not part of the release transaction.** A
+  template that fails to render must not stop a table freeing, and a crash
+  between the passes heals on the next sweep (it looks for released rows
+  with no notice). Quiet hours (V-009) will defer the send in dispatch; the
+  release is never deferred.
+- **A booking made at or after its own deadline is never auto-released.**
+  A guest booking at 6:30 for 7:00 was never given a window to confirm in;
+  without this the next sweep would release them.
+- **Once the start has passed, a `booked` row is the host's call** (seat or
+  no-show), even if a stalled sweep never reached it.
+- **"Same-day" is the restaurant calendar:** `dayOf(createdAt, tz) ===
+  businessDay`.
+- **The reminder uses the first lead the booking predates** — T-24h, else
+  T-3h. The PRD says "T-3h for same-day"; this also covers a booking made
+  the evening before, which would otherwise get no reminder at all. Field
+  name `lateReminderLead` says what it is.
+- **A3's "skipped if already confirmed and within 6h" = confirmed within
+  6h before the reminder's due time.** Measured from the due time, not
+  `now`, so a late sweep cannot turn a skipped reminder into a sent one.
+- **A3 says "tonight"**, which is wrong for a T-24h reminder; the template
+  uses `{date} at {time}`.
+- **STOP is honoured at queue time** (SQL `NOT EXISTS SmsOptOut`); V-009's
+  send-time check still has to land in `dispatchQueued`.
+- **The route uses GET + `CRON_SECRET`**, matching Vercel Cron, though the
+  project has no deploy target — any scheduler can call it.
+
+**Left behind:**
+- Quiet-hours deferral of the notice and reminders: V-009 (dispatch).
+- A change is judged against the original `createdAt` — noted on V-012.
+- The reminder pass reads then inserts unlocked (`ponytail:`): a cancel in
+  the milliseconds between can still queue a reminder.
+- **Deploy note:** the deployed environment needs `CRON_SECRET` and a
+  scheduler hitting `/api/cron/sweep` every few minutes.

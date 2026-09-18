@@ -102,6 +102,15 @@ first project's own record of it.
   body. Replaying a captured request is harmless, because handling is
   idempotent on the provider's message id. The real adapter (P2) brings
   the provider's own scheme.
+- **The deadline sweep is a polled cron route** (V-008). Release accuracy
+  is the sweep interval: at every 5 minutes, a table frees up to 5 minutes
+  after its deadline. Overlapping sweeps are safe (`SKIP LOCKED`, one
+  message per reservation and kind by constraint), so a tight interval
+  costs load, not correctness. A job queue with per-reservation timers
+  would be the upgrade at scale.
+- **Reminders read then insert without a lock** (V-008). A guest who
+  cancels in the same milliseconds can still be queued a reminder. An
+  `INSERT … SELECT` with the status check is the fix if it ever happens.
 
 ## Defects Found
 

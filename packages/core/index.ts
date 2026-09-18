@@ -5,6 +5,7 @@
 //          derives its status lists from
 //   V-006  message templating (rendered bodies, snapshot-safe)
 //   V-007  the inbound SMS grammar and what a reply does
+//   V-008  the deadline sweep: auto-release and reminders
 export * from './floor-plan';
 export * from './availability';
 export * from './time';
@@ -12,3 +13,4 @@ export * from './lifecycle';
 export * from './booking';
 export * from './messages';
 export * from './inbound';
+export * from './sweep';

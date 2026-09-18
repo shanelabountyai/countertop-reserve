@@ -12,6 +12,13 @@ export function weekdayOf(day: string): number {
   return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))).getUTCDay();
 }
 
+/** The restaurant-calendar "YYYY-MM-DD" an instant falls on — the instant → calendar direction. */
+export function dayOf(instant: Date, timezone: string): string {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(instant);
+  const part = (type: string) => parts.find((p) => p.type === type)?.value;
+  return `${part('year')}-${part('month')}-${part('day')}`;
+}
+
 /** Minutes east of UTC that `timezone` observes at `instant`. */
 function offsetMinutesAt(instant: Date, timezone: string): number {
   const raw = new Intl.DateTimeFormat('en-US', { timeZone: timezone, timeZoneName: 'longOffset' })
