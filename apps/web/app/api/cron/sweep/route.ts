@@ -5,9 +5,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import { mockProvider } from '@reserve/db/messages';
 import { sweep } from '@reserve/db/sweep';
-
-// ponytail: restaurant facts inline until V-011 moves config into the database.
-const RESTAURANT = { restaurant: 'Firebird Kitchen', timezone: 'America/Los_Angeles' };
+import { RESTAURANT } from '@/lib/restaurant';
 
 export async function GET(req: Request) {
   // Fail closed: an unset secret must never mean "anyone may sweep".

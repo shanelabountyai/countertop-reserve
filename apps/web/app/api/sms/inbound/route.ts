@@ -3,9 +3,7 @@
 // validation — and only then does the handler see it.
 
 import { handleInbound, parseInboundPayload, verifySignature } from '@reserve/db/inbound';
-
-// ponytail: restaurant facts inline until V-011 moves config into the database.
-const RESTAURANT = { restaurant: 'Firebird Kitchen', timezone: 'America/Los_Angeles', phone: '+15035550199' };
+import { RESTAURANT } from '@/lib/restaurant';
 
 const MAX_BYTES = 16_384;
 

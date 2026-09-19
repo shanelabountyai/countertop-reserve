@@ -40,6 +40,15 @@ describe('sendDecision (P0-8)', () => {
     expect(sendDecision(msg({ kind: 'help', isReply: true, startAt: null }), at(2, 0, '2026-10-03'), TZ)).toBe('send');
   });
 
+  it('"table ready" is exempt from quiet hours by its kind, not by its start time (P0-8, A12)', () => {
+    // A start far past the window, so only the kind can be what sends it.
+    const ready = msg({ kind: 'table_ready', startAt: at(19, 0, '2026-10-05') });
+    expect(sendDecision(ready, at(21), TZ)).toBe('send');
+    expect(sendDecision(ready, at(8, 59, '2026-10-03'), TZ)).toBe('send');
+    expect(sendDecision({ ...ready, kind: 'reminder' }, at(21), TZ)).toBe('defer');
+    expect(sendDecision({ ...ready, optedOut: true }, at(21), TZ)).toBe('opted_out');
+  });
+
   it('a STOP stops every kind but its own acknowledgement — at any hour, over any limit', () => {
     for (const kind of MESSAGE_KINDS) {
       const expected = kind === 'opted_out' ? 'send' : 'opted_out';

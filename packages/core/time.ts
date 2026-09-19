@@ -19,6 +19,13 @@ export function dayOf(instant: Date, timezone: string): string {
   return `${part('year')}-${part('month')}-${part('day')}`;
 }
 
+/** Restaurant-local minutes since midnight at an instant. */
+export function minuteOfDay(at: Date, timezone: string): number {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: timezone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(at);
+  const part = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+  return part('hour') * 60 + part('minute');
+}
+
 /** Minutes east of UTC that `timezone` observes at `instant`. */
 function offsetMinutesAt(instant: Date, timezone: string): number {
   const raw = new Intl.DateTimeFormat('en-US', { timeZone: timezone, timeZoneName: 'longOffset' })

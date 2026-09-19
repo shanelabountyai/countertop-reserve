@@ -228,3 +228,29 @@ Booking now records the exact consent wording the guest agreed to, not
 just a checkbox, and a booking made without consent (a phone booking the
 host enters) is never texted. STOP is always acknowledged, even at 2am and
 even over the daily limit, because it is the one message a guest must get.
+
+## V-010 — The host stand
+
+The host now has a screen: tonight's book on one page, lunch and dinner in
+their own groups, each party showing its time, table, whether they
+confirmed, and how long they have been sitting. Seat, no-show and cancel
+are one tap each, with five seconds to undo — and the Seat button is the
+biggest thing on the row, because it is the one tapped all night.
+
+Walk-ins go in from the same screen. If a table is free for their whole
+meal they are seated on the spot; if not, they go on the waitlist with a
+quoted range ("20-35 min"), never a single number nobody can keep. When a
+table clears, one tap texts them that it is ready — even at 9:30pm, since
+they are standing outside.
+
+Two things were built to be hard to miss. An allergy tag is solid red and
+shouted; a birthday is a quiet outline — a warning styled like decoration
+is how a warning gets ignored. And a guest whose confirmation text never
+arrived says so on their row, with the reason (opted out, daily limit, or
+not delivered), so silence is never mistaken for "confirmed."
+
+Under the hood, undo is honest: undoing a no-show gives back the table
+only if nobody has been seated there since, and says so if they have. The
+screen refreshes itself every ten seconds from a server-issued marker, not
+the tablet's clock, and stops polling when the tab is hidden. The whole
+screen sits behind a passcode.

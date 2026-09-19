@@ -6,7 +6,7 @@
 // before a release or a transition, only before a send.
 
 import type { MessageKind } from './messages';
-import { dayOf, plusMs, zonedTimeToInstant } from './time';
+import { dayOf, minuteOfDay, plusMs, zonedTimeToInstant } from './time';
 
 /**
  * Quiet window in restaurant-local minutes of day, wrapping midnight
@@ -18,12 +18,8 @@ export const DEFAULT_SEND: SendPolicy = { quietStart: 21 * 60, quietEnd: 9 * 60,
 
 /** The answer to STOP. It must reach the guest, so no rule below holds it back. */
 const ALWAYS: MessageKind = 'opted_out';
-
-function minuteOfDay(at: Date, timezone: string): number {
-  const parts = new Intl.DateTimeFormat('en-US', { timeZone: timezone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(at);
-  const part = (type: string) => Number(parts.find((p) => p.type === type)?.value);
-  return part('hour') * 60 + part('minute');
-}
+/** "Your table is ready" (A12): the guest is standing outside, so quiet hours never hold it (P0-8). */
+const NOT_QUIET: readonly MessageKind[] = ['table_ready'];
 
 /** The instant the quiet window `now` falls in ends, or null outside it. */
 export function quietUntil(now: Date, timezone: string, p: SendPolicy = DEFAULT_SEND): Date | null {
@@ -64,6 +60,6 @@ export function sendDecision(m: Outgoing, now: Date, timezone: string, p: SendPo
   if (m.kind === ALWAYS) return 'send';
   if (m.optedOut) return 'opted_out';
   const until = quietUntil(now, timezone, p);
-  if (until && !m.isReply && !(m.startAt && m.startAt < until)) return 'defer';
+  if (until && !m.isReply && !NOT_QUIET.includes(m.kind) && !(m.startAt && m.startAt < until)) return 'defer';
   return m.sentToday >= p.dailyLimit ? 'rate_limited' : 'send';
 }

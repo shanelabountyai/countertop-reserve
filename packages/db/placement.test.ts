@@ -262,7 +262,7 @@ describe('confirmation text (P0-5)', () => {
     const r = await booked();
     await expect(
       prisma.outboundMessage.create({
-        data: { reservationId: r.id, kind: 'confirmation', toPhone: r.guestPhone, body: 'again', status: 'queued', createdAt: NOW, statusChangedAt: NOW },
+        data: { reservationId: r.id, kind: 'confirmation', toPhone: r.guestPhone!, body: 'again', status: 'queued', createdAt: NOW, statusChangedAt: NOW },
       }),
     ).rejects.toMatchObject({ code: 'P2002' });
   });

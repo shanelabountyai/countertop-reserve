@@ -77,6 +77,13 @@ const EDGES: Record<Status, Partial<Record<Status, readonly Actor[]>>> = {
   abandoned: {},
 };
 
+/**
+ * Whether the table has an edge `from → to` for `actor` — what a screen asks
+ * to decide which buttons a row gets. `transition` still has the final word
+ * (grace period, start time).
+ */
+export const allows = (from: Status, to: Status, actor: Actor) => EDGES[from][to]?.includes(actor) ?? false;
+
 export type LifecyclePolicy = {
   /** A no-show can be marked only this long after the reservation's start. */
   noShowGraceMinutes: number;
@@ -139,8 +146,11 @@ export function transition(
 /** The last event on the reservation, as stored in ReservationEvent. */
 export type LastEvent = { fromStatus: Status | null; toStatus: Status; at: Date; actor: Actor };
 
-// Only the host's one-tap actions carry an undo (P0-9).
-const REVERTIBLE: readonly Status[] = ['seated', 'no_show', 'cancelled'];
+// Only the host's one-tap actions carry an undo (P0-9): seat, no-show,
+// cancel, and the floor's two housekeeping taps — clearing a finished table
+// and removing a waitlisted party who left. A mis-tap on either frees or
+// drops a real party, so it gets the same 5 seconds.
+const REVERTIBLE: readonly Status[] = ['seated', 'no_show', 'cancelled', 'completed', 'abandoned'];
 
 /**
  * Undo is a logged revert back to the previous status, appended as its own

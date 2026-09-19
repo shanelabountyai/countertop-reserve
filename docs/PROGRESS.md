@@ -585,3 +585,61 @@ day dropped and STOP still acknowledged; the limit resetting the next day.
   if the limit ever has to be exact.
 
 V-009 committed at 0e5723e.
+
+## V-010 — Host floor view
+
+**Built:**
+- `core`: `table_ready` message kind (A12) and its quiet-hours exemption in
+  `sendDecision`, by kind, not by start time. `walkIn` in `availability.ts`:
+  the table half of the engine at an arbitrary instant (off-grid, no
+  pacing), sharing `freeUnits` with `availability`, and a quoted range
+  (first fitting end, rounded up to 5 min, +15) when nothing is free.
+  `allows(from, to, actor)` exposes the edge table so screens draw buttons
+  from it. `REVERTIBLE` gains `completed` (clear table) and `abandoned`
+  (remove from waitlist). `minuteOfDay` moved to `time.ts`.
+- Migration `host_floor`: `guestPhone` nullable (walk-ins), consent needs a
+  phone (CHECK), `quotedWait` snapshot column, `reservation_has_tables`
+  relaxed for `waitlisted`/`abandoned`, `table_ready` in the kind CHECK.
+- `db/floor.ts`: `loadFloor`, `floorCursor`, `hostMove`, `undoLast`,
+  `addWalkIn`, `tableReady`. Every tap runs `transition`/`revert` and
+  applies the table effect in the same transaction as the event. Seating a
+  waitlisted party allocates fresh at that instant; undoing a no-show,
+  cancel or clear re-takes the snapshot tables under the constraint.
+  `placement.ts` exports `loadPlan` and `firstUnit` for it.
+- `apps/web`: `/host` (server component, grouped by service period,
+  waitlist on top), server actions posting notice codes, `LiveUpdates`
+  polling `/api/floor-updates` every 10s, paused in background tabs,
+  `Expiring` for the undo button. `/host/login` + `middleware.ts` +
+  `lib/staff-auth.ts`. `lib/restaurant.ts` holds the config the routes
+  had inlined.
+- Tests: core walk-in fixtures (hand-calculated: range, combination halves,
+  a gap shorter than the turn, overstaying seated party, too large),
+  revert/allows; DB `floor.test.ts` (13): undo inside/outside 5s, too-early
+  no-show, a walk-in into a no-show's table then the no-show's undo refused
+  `table_taken`, waitlist quote → seat → undo, "table ready" at 21:30 sent
+  once, STOP shown on the row, five concurrent walk-ins for the last table,
+  cursor moves on a tap and on a failed send. e2e `host.spec.ts`: passcode
+  gate (GET redirect, POST 401), ≥48px targets, ≥18px rows, Seat largest,
+  allergy vs occasion styling, failed text shown, axe clean, seat/undo and
+  the undo vanishing, walk-in seated → waitlisted → table ready.
+
+**Decided:**
+- **Host auth now, not later** (kickoff question): Countertop's C-037
+  passcode gate, ported. The floor shows names and can cancel tables.
+- **Walk-ins skip pacing.** The party is at the stand; exceeding the cap is
+  the host's call.
+- **The cursor is the tip of what can change the screen**: event count,
+  message count, non-queued count, failed count — all monotonic, so an
+  out-of-order commit still moves it (Countertop's lesson).
+- **"Table ready" does not hold a table**; seating allocates at the tap.
+- **Refusals come back as codes mapped to fixed text**, so a crafted URL
+  cannot write on the host's screen.
+- **A seated party past its turn still occupies its table**; for quoting it
+  is assumed to leave within one slot.
+
+**Left behind:**
+- The quote ignores parties already waitlisted ahead (`ponytail:` in core);
+  P1-2.
+- Walk-ins take no tags or note.
+- Undoing a waitlisted party's seat keeps the seat time as `startAt`; the
+  arrival time survives in the event log.

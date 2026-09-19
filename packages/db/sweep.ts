@@ -111,7 +111,9 @@ async function queue(
       AND NOT EXISTS (SELECT 1 FROM "SmsOptOut" o WHERE o.phone = r."guestPhone")
     ORDER BY r."startAt", r.id`;
   const template = (config.templates ?? DEFAULT_TEMPLATES)[kind];
-  const data = candidates.filter(due).map((r) => ({
+  // The SQL's consent filter already implies a number (CHECK); this says so to the type.
+  const reachable = candidates.filter((r): r is Reservation & { guestPhone: string } => r.guestPhone !== null);
+  const data = reachable.filter(due).map((r) => ({
     reservationId: r.id,
     kind,
     toPhone: r.guestPhone,

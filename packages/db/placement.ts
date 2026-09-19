@@ -50,6 +50,8 @@ export type PlacementConfig = {
 };
 
 export type PlaceRequest = GuestFields & {
+  /** A booking always has a number to confirm it by (P0-12). */
+  guestPhone: string;
   /** Client-generated; a retry with the same key gets the same reservation back. */
   idempotencyKey: string;
   /** Restaurant-timezone "YYYY-MM-DD". */
@@ -109,19 +111,11 @@ async function fit(
   const bucket = q.startAt.getTime() / 60_000;
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(${bucket}::bigint)`;
 
-  const [tables, combos, held] = [
-    await tx.diningTable.findMany(),
-    await tx.combination.findMany({ include: { members: true } }),
-    await tx.reservation.findMany({
-      where: { businessDay: q.day, status: { in: [...HOLDS_TABLES] }, ...(except && { id: { not: except } }) },
-      select: { startAt: true, partySize: true, turnMinutes: true, tableIds: true },
-    }),
-  ];
-  const plan: FloorPlan = {
-    tables,
-    combinations: combos.map((c) => ({ ...c, tableIds: c.members.map((m) => m.tableId) })),
-    overSeatCap: config.overSeatCap,
-  };
+  const plan = await loadPlan(tx, config.overSeatCap);
+  const held = await tx.reservation.findMany({
+    where: { businessDay: q.day, status: { in: [...HOLDS_TABLES] }, ...(except && { id: { not: except } }) },
+    select: { startAt: true, partySize: true, turnMinutes: true, tableIds: true },
+  });
   const bands = config.turnBands ?? DEFAULT_TURN_BANDS;
   const avail = availability({
     day: q.day,
@@ -139,12 +133,18 @@ async function fit(
   return { ok: true as const, units: slot.units, turn, endAt: plusMs(q.startAt, turn * 60_000) };
 }
 
+/** Today's floor plan, read inside the caller's transaction. */
+export async function loadPlan(tx: Prisma.TransactionClient, overSeatCap: number): Promise<FloorPlan> {
+  const [tables, combos] = [await tx.diningTable.findMany(), await tx.combination.findMany({ include: { members: true } })];
+  return { tables, combinations: combos.map((c) => ({ ...c, tableIds: c.members.map((m) => m.tableId) })), overSeatCap };
+}
+
 /**
  * Step 3: `write` each candidate unit under its own savepoint until one
  * clears the exclusion constraint; null when every unit was taken under us.
  * A failed attempt rolls back everything `write` did, not just the hold.
  */
-async function firstUnit<T>(tx: Prisma.TransactionClient, units: readonly { tableIds: readonly string[] }[], write: (tableIds: string[]) => Promise<T>) {
+export async function firstUnit<T>(tx: Prisma.TransactionClient, units: readonly { tableIds: readonly string[] }[], write: (tableIds: string[]) => Promise<T>) {
   for (const unit of units) {
     await tx.$executeRaw`SAVEPOINT unit`;
     try {

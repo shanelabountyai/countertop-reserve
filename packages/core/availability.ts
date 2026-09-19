@@ -114,13 +114,7 @@ export function availability(input: AvailabilityInput): Availability {
       if (s <= now.getTime()) reason = 'past';
       else if (!withinSeating) reason = 'closed';
       else {
-        // Half-open [start, start + turn): a table freed at 19:00 seats a 19:00 party.
-        const busy = new Set(
-          reservations
-            .filter((r) => r.start.getTime() < s + turnMs && s < r.start.getTime() + r.turnMinutes * 60_000)
-            .flatMap((r) => r.tableIds),
-        );
-        free = units.filter((u) => u.tableIds.every((t) => !busy.has(t)));
+        free = freeUnits(units, reservations, s, turnMs);
         const bucketCovers = reservations
           .filter((r) => r.start.getTime() >= s && r.start.getTime() < s + slotMs)
           .reduce((sum, r) => sum + r.partySize, 0);
@@ -135,4 +129,72 @@ export function availability(input: AvailabilityInput): Availability {
   if (slots.some((slot) => slot.bookable)) return { slots, reason: null };
   const present = new Set(slots.map((slot) => (slot.bookable ? null : slot.reason)));
   return { slots, reason: REASON_PRIORITY.find((r) => present.has(r)) ?? 'closed' };
+}
+
+/** The units free for the whole of [start, start + turn). Half-open: a table freed at 19:00 seats a 19:00 party. */
+function freeUnits(units: readonly Unit[], reservations: readonly HeldReservation[], startMs: number, turnMs: number): Unit[] {
+  const busy = new Set(
+    reservations
+      .filter((r) => r.start.getTime() < startMs + turnMs && startMs < r.start.getTime() + r.turnMinutes * 60_000)
+      .flatMap((r) => r.tableIds),
+  );
+  return units.filter((u) => u.tableIds.every((t) => !busy.has(t)));
+}
+
+/** A quoted wait is a RANGE, never a point (P0-9): the low end, then this much on top. */
+export const QUOTE_SPREAD_MINUTES = 15;
+const QUOTE_STEP_MINUTES = 5;
+
+export type WalkInInput = {
+  partySize: number;
+  plan: FloorPlan;
+  /** Held reservations, as for `availability`; `seated` marks a party physically at the table. */
+  reservations: readonly (HeldReservation & { seated?: boolean })[];
+  now: Date;
+  turnBands?: TurnBands;
+};
+
+export type WalkIn =
+  | { seatable: true; units: Unit[] }
+  | { seatable: false; reason: 'too_large' | 'too_small' }
+  /** In whole minutes from now. */
+  | { seatable: false; reason: 'wait'; wait: { fromMinutes: number; toMinutes: number } };
+
+/**
+ * A party at the host stand NOW (P0-9): the table half of `availability` at an
+ * arbitrary instant, off the 15-minute grid. No pacing and no service-period
+ * check — the party is already here, and seating them past a pacing cap is
+ * the host's call to make, not the app's to refuse.
+ *
+ * A seated party still at the table after its booked turn is assumed to
+ * leave within one slot, so its table is never offered as free while they
+ * sit there.
+ *
+ * ponytail: the quote ignores parties already waitlisted ahead, so a second
+ * waiting two-top is quoted the same table as the first. P1-2 (measured turn
+ * times) is where quoting gets honest; queue position belongs with it.
+ */
+export function walkIn(input: WalkInInput): WalkIn {
+  const { partySize, plan, now } = input;
+  if (!Number.isInteger(partySize) || partySize < 1) throw new Error(`Invalid party size: ${partySize}`);
+  const units = fittingUnits(plan, partySize);
+  if (units.length === 0) return { seatable: false, reason: partySize > largestUnitSeats(plan) ? 'too_large' : 'too_small' };
+
+  const n = now.getTime();
+  const slotMs = SLOT_MINUTES * 60_000;
+  const held = input.reservations.map((r) => {
+    const end = r.start.getTime() + r.turnMinutes * 60_000;
+    return r.seated && end < n + slotMs ? { ...r, turnMinutes: (n + slotMs - r.start.getTime()) / 60_000 } : r;
+  });
+  const turnMs = turnMinutes(partySize, input.turnBands ?? DEFAULT_TURN_BANDS) * 60_000;
+
+  const free = freeUnits(units, held, n, turnMs);
+  if (free.length > 0) return { seatable: true, units: free };
+
+  // A unit can only come free when some hold ends: try each end in order.
+  // After the last one nothing is held, so the fallback is never a guess.
+  const ends = [...new Set(held.map((r) => r.start.getTime() + r.turnMinutes * 60_000))].filter((e) => e > n).sort((a, b) => a - b);
+  const first = ends.find((e) => freeUnits(units, held, e, turnMs).length > 0) ?? Math.max(n, ...ends);
+  const fromMinutes = Math.ceil((first - n) / 60_000 / QUOTE_STEP_MINUTES) * QUOTE_STEP_MINUTES;
+  return { seatable: false, reason: 'wait', wait: { fromMinutes, toMinutes: fromMinutes + QUOTE_SPREAD_MINUTES } };
 }

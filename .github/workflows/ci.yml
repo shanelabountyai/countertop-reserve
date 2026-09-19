@@ -30,6 +30,8 @@ env:
   SMS_WEBHOOK_SECRET: ci-only-not-a-secret
   # Same for the sweep route's bearer token.
   CRON_SECRET: ci-only-not-a-secret
+  # And the host floor view's passcode; the e2e spec signs in with it.
+  STAFF_PASSCODE: ci-only-not-a-secret
 
 jobs:
   gate:

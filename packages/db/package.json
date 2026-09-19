@@ -21,6 +21,7 @@
     "./placement": "./placement.ts",
     "./inbound": "./inbound.ts",
     "./messages": "./messages.ts",
-    "./sweep": "./sweep.ts"
+    "./sweep": "./sweep.ts",
+    "./floor": "./floor.ts"
   }
 }

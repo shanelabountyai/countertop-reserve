@@ -10,13 +10,14 @@ export type TagKind = (typeof TAG_KINDS)[number];
 /** E.164: "+", a non-zero country digit, 15 digits max in total. */
 export const isE164 = (phone: string) => /^\+[1-9]\d{1,14}$/.test(phone);
 
-export type GuestFields = { guestName: string; guestPhone: string; note?: string; tags?: readonly string[] };
+/** `guestPhone` null: a walk-in who gave no number (V-010). The guest web flow requires one. */
+export type GuestFields = { guestName: string; guestPhone: string | null; note?: string; tags?: readonly string[] };
 export type InvalidField = 'guestName' | 'guestPhone' | 'note' | 'tags';
 
 /** The first field that fails, or null. */
 export function invalidGuestField(g: GuestFields): InvalidField | null {
   if (g.guestName.trim() === '') return 'guestName';
-  if (!isE164(g.guestPhone)) return 'guestPhone';
+  if (g.guestPhone !== null && !isE164(g.guestPhone)) return 'guestPhone';
   // Code points, not UTF-16 units — the same count as Postgres char_length.
   if (g.note !== undefined && [...g.note].length > NOTE_MAX) return 'note';
   if (g.tags?.some((t) => !(TAG_KINDS as readonly string[]).includes(t))) return 'tags';

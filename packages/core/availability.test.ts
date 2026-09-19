@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fittingUnits, turnMinutes, type FloorPlan } from './floor-plan';
-import { availability, type HeldReservation, type Schedule, type ServicePeriod, type Slot } from './availability';
+import { availability, walkIn, type HeldReservation, type Schedule, type ServicePeriod, type Slot } from './availability';
 import { zonedTimeToInstant } from './time';
 
 // Hand-built plan: two deuces that combine into a four, a four-top, a six-top.
@@ -195,5 +195,47 @@ describe('availability (P0-2)', () => {
   it('rejects a nonsense party size', () => {
     expect(() => run(0)).toThrow();
     expect(() => run(2.5)).toThrow();
+  });
+});
+
+// ─── Walk-ins (P0-9) ────────────────────────────────────────────────────────
+// Same plan, same Friday. A party at the stand at 19:10; windows hand-calculated.
+describe('walkIn — a party at the host stand now', () => {
+  const now = zonedTimeToInstant(DAY, 19 * 60 + 10, TZ);
+  const hold = (tableIds: string[], h: number, m: number, turn: number, seated = false) => ({
+    start: zonedTimeToInstant(DAY, h * 60 + m, TZ),
+    partySize: 2,
+    turnMinutes: turn,
+    tableIds,
+    seated,
+  });
+  const ask = (partySize: number, reservations: ReturnType<typeof hold>[]) => walkIn({ partySize, plan: PLAN, reservations, now });
+
+  it('seats at once, off the 15-minute grid, when a table is free for the whole turn', () => {
+    expect(ask(2, [])).toMatchObject({ seatable: true, units: [{ id: 'T1' }, { id: 'T2' }, { id: 'T3' }] });
+  });
+
+  it('quotes a range from the first table that frees: T3 at 19:30 → 20–35 min', () => {
+    const r = [hold(['T1'], 18, 30, 75), hold(['T2'], 19, 0, 75), hold(['T3'], 18, 0, 90)]; // ends 19:45, 20:15, 19:30
+    expect(ask(2, r)).toEqual({ seatable: false, reason: 'wait', wait: { fromMinutes: 20, toMinutes: 35 } });
+  });
+
+  it('a combination needs both halves free, and a gap shorter than the turn is no gap', () => {
+    // Party of 4 (90 min). T3 frees 19:30 but is booked again at 20:00; T1 frees
+    // 19:40, T2 19:45 → C12 at 19:45; T4 20:10. First real fit: 19:45 → 35–50.
+    const r = [hold(['T3'], 18, 0, 90), hold(['T3'], 20, 0, 90), hold(['T1'], 18, 25, 75), hold(['T2'], 18, 30, 75), hold(['T4'], 18, 10, 120)];
+    expect(ask(4, r)).toEqual({ seatable: false, reason: 'wait', wait: { fromMinutes: 35, toMinutes: 50 } });
+  });
+
+  it('a seated party past its turn still occupies the table, assumed gone within a slot', () => {
+    const others = [hold(['T2'], 19, 0, 75), hold(['T3'], 19, 0, 90)];
+    // T1's turn ended 18:45 — but they are still sitting there. 19:10 + 15 = 19:25.
+    expect(ask(2, [hold(['T1'], 17, 30, 75, true), ...others])).toEqual({ seatable: false, reason: 'wait', wait: { fromMinutes: 15, toMinutes: 30 } });
+    // The same window, not seated (a no-show's old hold, say), is free now.
+    expect(ask(2, [hold(['T1'], 17, 30, 75), ...others])).toMatchObject({ seatable: true, units: [{ id: 'T1' }] });
+  });
+
+  it('a party no unit fits is refused with the reason, not quoted', () => {
+    expect(ask(7, [])).toEqual({ seatable: false, reason: 'too_large' });
   });
 });

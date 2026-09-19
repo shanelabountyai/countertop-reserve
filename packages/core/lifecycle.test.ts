@@ -5,6 +5,7 @@ import {
   STATUSES,
   TERMINAL,
   UPCOMING,
+  allows,
   parseStatus,
   revert,
   transition,
@@ -138,6 +139,18 @@ describe('revert — undo is a logged event, never a delete', () => {
     expect(revert(res('cancelled'), guest, plus(1))).toEqual({ ok: false, reason: 'not_revertible' });
     expect(revert(res('released'), sweep, plus(1))).toEqual({ ok: false, reason: 'not_revertible' });
   });
+  it('undoes clearing a table (re-acquiring it) and removing a waitlisted party', () => {
+    const cleared = { fromStatus: 'seated', toStatus: 'completed', at: seatedAt, actor: 'host' } as const;
+    const removed = { fromStatus: 'waitlisted', toStatus: 'abandoned', at: seatedAt, actor: 'host' } as const;
+    expect(revert(res('completed'), cleared, plus(3))).toEqual({ ok: true, from: 'completed', to: 'seated', tables: 'acquire' });
+    expect(revert(res('abandoned'), removed, plus(3))).toEqual({ ok: true, from: 'abandoned', to: 'waitlisted', tables: 'none' });
+  });
+  it('an undo is not itself undoable, and a system abandon is not the host\'s to undo', () => {
+    const undo = { fromStatus: 'seated', toStatus: 'confirmed', at: seatedAt, actor: 'host' } as const;
+    const timedOut = { fromStatus: 'waitlisted', toStatus: 'abandoned', at: seatedAt, actor: 'system' } as const;
+    expect(revert(res('confirmed'), undo, plus(1))).toEqual({ ok: false, reason: 'not_revertible' });
+    expect(revert(res('abandoned'), timedOut, plus(1))).toEqual({ ok: false, reason: 'not_revertible' });
+  });
   it('refuses when the event is stale (status moved on since)', () => {
     expect(revert(res('completed'), lastSeat, plus(1))).toEqual({ ok: false, reason: 'not_revertible' });
   });
@@ -147,5 +160,14 @@ describe('parseStatus — the DB column is plain text', () => {
   it('accepts every status and rejects anything else', () => {
     for (const s of STATUSES) expect(parseStatus(s)).toBe(s);
     expect(() => parseStatus('Seated')).toThrow(/unknown reservation status/);
+  });
+});
+
+describe('allows — what a screen asks before drawing a button', () => {
+  it('agrees with the hand-written VALID list for every (from, to, actor)', () => {
+    for (const from of STATUSES)
+      for (const to of STATUSES)
+        for (const actor of ['guest', 'host', 'system'] as const)
+          expect(allows(from, to, actor), `${from}→${to} by ${actor}`).toBe(VALID.some(([f, t, a]) => f === from && t === to && a === actor));
   });
 });

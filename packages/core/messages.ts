@@ -7,7 +7,8 @@
 
 /**
  * `confirmation` (on booking), `reminder` and `released` (the deadline sweep)
- * are owned by the reservation, one each. The rest are replies to an inbound
+ * and `table_ready` (the host, to a waitlisted guest) are owned by the
+ * reservation, one each. The rest are replies to an inbound
  * text (P0-6, Appendix A), one per inbound message.
  */
 export const MESSAGE_KINDS = [
@@ -22,6 +23,7 @@ export const MESSAGE_KINDS = [
   'unrecognised',
   'help',
   'opted_out',
+  'table_ready',
 ] as const;
 export type MessageKind = (typeof MESSAGE_KINDS)[number];
 
@@ -58,6 +60,7 @@ export const DEFAULT_TEMPLATES: Templates = {
   no_reservation: "We don't see an upcoming reservation for this number. Book here: {bookLink}",
   unrecognised: 'Sorry - I only understand C (confirm), X (cancel), CHANGE, or HELP.',
   help: '{restaurant} reservations. Reply C to confirm, X to cancel, CHANGE to reschedule, STOP to opt out. Call {phone}.',
+  table_ready: '{restaurant}: your table is ready. Please come to the host stand in the next 10 minutes.',
   opted_out: "You're opted out and won't get more texts. Your booking is unchanged - call {phone} to change it.",
 };
 

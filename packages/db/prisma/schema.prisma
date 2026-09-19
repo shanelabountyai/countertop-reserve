@@ -91,8 +91,8 @@ model Reservation {
   /// this, never TableHold (holds are deleted on release).
   tableIds        String[]
   guestName       String
-  /// E.164.
-  guestPhone      String
+  /// E.164. Null for a walk-in who gave none (V-010); a consent needs one (CHECK).
+  guestPhone      String?
   /// Guest note, ≤140 chars (CHECK).
   note            String?
   /// Tag KINDS only — allergy | occasion | accessibility (CHECK). The detail
@@ -109,6 +109,8 @@ model Reservation {
   /// not a boolean, so a later wording change can't rewrite what they saw.
   /// Null = no consent: no reservation-owned text is ever queued.
   smsConsent      String?
+  /// The wait quoted to a waitlisted party, as said ("20-35 min"). A snapshot.
+  quotedWait      String?
 
   holds    TableHold[]
   events   ReservationEvent[]

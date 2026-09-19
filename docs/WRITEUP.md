@@ -122,6 +122,24 @@ first project's own record of it.
   `notBefore` column is the upgrade.
 - **The daily text limit counts by status-change time (V-009)**, so a text
   sent at 23:59 and delivered after midnight counts toward the next day.
+- **The host floor is behind one shared passcode (V-010).** Ported from
+  Countertop's C-037: a cookie that is a digest of `STAFF_PASSCODE`, no
+  accounts, rotate the passcode to sign everyone out. Not in the PRD; added
+  because the floor shows guest names and can cancel tables.
+- **Walk-ins skip pacing (V-010).** The party is already at the stand;
+  seating them past the kitchen's per-bucket cap is the host's call, so the
+  walk-in path asks the table half of the engine only.
+- **Waitlist quotes come from booked turns and ignore the queue (V-010).**
+  The first time a fitting unit is free for a full turn, rounded up to 5
+  minutes, plus 15 — a range, never a point. A second waiting two-top is
+  quoted the same table as the first. P1-2 (measured turns) is the fix.
+- **An overstaying seated party is assumed gone within 15 minutes (V-010)**
+  when quoting, and is never offered as free while seated. "Clear table" is
+  what frees it.
+- **"Table ready" does not hold the table (V-010).** The host texts, then
+  seats; seating allocates under the constraint at that moment, and a table
+  taken in between is a clean "no table fits" refusal. One text per party
+  by constraint.
 
 ## Defects Found
 
