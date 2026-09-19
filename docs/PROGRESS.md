@@ -643,3 +643,5 @@ V-009 committed at 0e5723e.
 - Walk-ins take no tags or note.
 - Undoing a waitlisted party's seat keeps the seat time as `startAt`; the
   arrival time survives in the event log.
+
+V-010 committed at de48ec8.
