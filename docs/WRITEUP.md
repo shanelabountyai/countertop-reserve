@@ -192,6 +192,12 @@ first project's own record of it.
   test was describing the old, queue-time world. Lesson: once a check moves
   to send time, a test's order of *events* matters, not just its inputs.
 
+- **V-010: a test that leaned on unspecified row order.** The five-walk-ins
+  test compared a `groupBy` over TableHold to `[T1, T2]` with no `orderBy`.
+  Green locally three times, red in CI, where Postgres returned T2 first.
+  The allocation was right; the assertion was order-sensitive. Fixed with
+  an explicit `orderBy`.
+
 ## Skills Learned / Functions Unlocked
 
 *(filled in as phases land.)*

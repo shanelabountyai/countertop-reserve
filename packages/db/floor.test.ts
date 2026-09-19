@@ -169,7 +169,7 @@ describe('allocation under the constraint', () => {
       if (r.ok) expect(['seated', 'waitlisted']).toContain(r.reservation.status);
       else expect(r).toEqual({ ok: false, reason: 'no_longer_available' });
     }
-    expect(await prisma.tableHold.groupBy({ by: ['tableId'], _count: true })).toEqual([
+    expect(await prisma.tableHold.groupBy({ by: ['tableId'], _count: true, orderBy: { tableId: 'asc' } })).toEqual([
       { tableId: 'T1', _count: 1 },
       { tableId: 'T2', _count: 1 },
     ]);

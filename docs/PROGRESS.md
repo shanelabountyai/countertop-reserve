@@ -645,3 +645,5 @@ V-009 committed at 0e5723e.
   arrival time survives in the event log.
 
 V-010 committed at de48ec8.
+CI caught an order-sensitive assertion in `floor.test.ts` (a `groupBy` with no
+`orderBy`); fixed in a follow-up commit, see WRITEUP Defects Found.
