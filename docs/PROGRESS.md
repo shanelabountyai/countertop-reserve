@@ -790,3 +790,5 @@ a 404.
   cancel, which are the two that touch inventory.
 - `dayAvailability` reads outside a transaction, so a slot shown bookable
   can still be refused at submit. That is the design: the constraint decides.
+
+V-012 committed at 5871161.
