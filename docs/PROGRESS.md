@@ -712,3 +712,5 @@ overlapping period refused, and an override regrouping the floor view.
   diff warning fires on the removal, which is the honest half.
 - The confirm step re-runs the check on a GET, so two hosts editing at once
   could both be shown a clean preview. One passcode, one stand.
+
+V-011 committed at 3ffc19b.
