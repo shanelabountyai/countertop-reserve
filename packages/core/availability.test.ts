@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fittingUnits, turnMinutes, type FloorPlan } from './floor-plan';
-import { availability, walkIn, type HeldReservation, type Schedule, type ServicePeriod, type Slot } from './availability';
+import { availability, outsideHours, walkIn, type HeldReservation, type Schedule, type ServicePeriod, type Slot } from './availability';
 import { zonedTimeToInstant } from './time';
 
 // Hand-built plan: two deuces that combine into a four, a four-top, a six-top.
@@ -237,5 +237,47 @@ describe('walkIn — a party at the host stand now', () => {
 
   it('a party no unit fits is refused with the reason, not quoted', () => {
     expect(ask(7, [])).toEqual({ seatable: false, reason: 'too_large' });
+  });
+});
+
+// ─── The hours-edit diff warning (P0-10) ────────────────────────────────────
+// A host is about to change the hours; which already-booked parties does the
+// new schedule strand? Rows are named as the reservation table stores them.
+const booked = (businessDay: string, time: string, turnMinutes: number, guestName = 'Dana') => ({
+  guestName,
+  businessDay,
+  startAt: zonedTimeToInstant(businessDay, hm(time), TZ),
+  turnMinutes,
+});
+
+describe('outsideHours — the hours-edit diff warning (P0-10)', () => {
+  it('says nothing about reservations the new hours still cover', () => {
+    expect(outsideHours(SCHEDULE, [booked(DAY, '17:30', 90), booked(DAY, '19:00', 75)])).toEqual([]);
+  });
+
+  it('a seating no period contains is `closed`', () => {
+    // 21:15 is past dinner's close; Monday is dark all day.
+    expect(outsideHours(SCHEDULE, [booked(DAY, '21:15', 75)])).toEqual([{ row: booked(DAY, '21:15', 75), reason: 'closed' }]);
+    expect(outsideHours(SCHEDULE, [booked('2026-10-05', '19:00', 75)])[0]?.reason).toBe('closed');
+  });
+
+  it('a blackout strands the whole date, weekly periods or not', () => {
+    expect(outsideHours(SCHEDULE, [booked('2026-10-31', '19:00', 75)])[0]?.reason).toBe('closed');
+  });
+
+  it("a turn that now runs past close is `overhang`, not `closed` — the party's time still exists", () => {
+    expect(outsideHours(SCHEDULE, [booked(DAY, '20:00', 120)])[0]).toEqual({ row: booked(DAY, '20:00', 120), reason: 'overhang' });
+  });
+
+  it('an explicit last seating decides the overhang, and a start past it strands', () => {
+    const withLast: Schedule = { ...SCHEDULE, weekly: SCHEDULE.weekly.map((day) => day.map((p) => ({ ...p, lastSeatingMinute: hm('20:00') }))) };
+    // 20:00 + a 120-minute turn overhangs close, but last seating says yes.
+    expect(outsideHours(withLast, [booked(DAY, '20:00', 120)])).toEqual([]);
+    expect(outsideHours(withLast, [booked(DAY, '20:15', 60)])[0]?.reason).toBe('overhang');
+  });
+
+  it('reports every stranded row, not just the first', () => {
+    const rows = [booked(DAY, '19:00', 75, 'fine'), booked(DAY, '21:15', 75, 'a'), booked('2026-10-31', '19:00', 75, 'b')];
+    expect(outsideHours(SCHEDULE, rows).map((c) => c.row.guestName)).toEqual(['a', 'b']);
   });
 });

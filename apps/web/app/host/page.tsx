@@ -5,8 +5,9 @@
 // re-derived on the client. Which buttons a row gets comes from the lifecycle
 // module's edge table (`allows`), never from a status list kept here.
 import { randomUUID } from 'node:crypto';
-import { allows, dayOf, minuteOfDay, periodsFor, whenSlots, type Status } from '@reserve/core';
+import { allows, dayOf, minuteOfDay, periodAt, periodsFor, whenSlots, type Status } from '@reserve/core';
 import { floorCursor, loadFloor, WAITLIST_CONSENT, type FloorRow } from '@reserve/db/floor';
+import { loadSchedule } from '@reserve/db/schedule';
 import { RESTAURANT } from '@/lib/restaurant';
 import { move, ready, undo, walkIn } from './actions';
 import { Expiring } from './expiring';
@@ -70,13 +71,10 @@ export default async function HostPage({ searchParams }: { searchParams: Promise
   const now = new Date();
   const today = dayOf(now, TZ);
   const day = dayParam && /^\d{4}-\d{2}-\d{2}$/.test(dayParam) ? dayParam : today;
-  const [rows, cursor] = await Promise.all([loadFloor(day, now), floorCursor()]);
+  const [rows, cursor, schedule] = await Promise.all([loadFloor(day, now), floorCursor(), loadSchedule(TZ)]);
 
-  const periods = [...periodsFor(RESTAURANT.schedule, day)].sort((a, b) => a.openMinute - b.openMinute);
-  const periodOf = (r: FloorRow) => {
-    const m = minuteOfDay(r.startAt, TZ);
-    return periods.find((p) => m >= p.openMinute && m < p.closeMinute)?.name ?? 'Outside service hours';
-  };
+  const periods = [...periodsFor(schedule, day)].sort((a, b) => a.openMinute - b.openMinute);
+  const periodOf = (r: FloorRow) => periodAt(periods, minuteOfDay(r.startAt, TZ))?.name ?? 'Outside service hours';
   const waitlist = rows.filter((r) => r.status === 'waitlisted');
   const book = rows.filter((r) => r.status !== 'waitlisted');
   const groups = [...periods.map((p) => p.name), 'Outside service hours']
@@ -89,7 +87,10 @@ export default async function HostPage({ searchParams }: { searchParams: Promise
       <header className="flex flex-wrap items-baseline justify-between gap-2">
         <h1 className="text-3xl font-bold">Floor</h1>
         <p>
-          {day === today ? 'Tonight' : day} · {RESTAURANT.restaurant}
+          {day === today ? 'Tonight' : day} · {RESTAURANT.restaurant} ·{' '}
+          <a href="/host/hours" className="underline">
+            Hours
+          </a>
         </p>
       </header>
 

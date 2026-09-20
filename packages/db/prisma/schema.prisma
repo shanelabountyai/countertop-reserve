@@ -74,6 +74,49 @@ model CombinationMember {
   @@id([combinationId, tableId])
 }
 
+// ─── When the restaurant serves (P0-10). The schedule the availability
+// engine reads, editable by the host — so the periods the engine is handed
+// are rows, not a constant in the app.
+//
+// Weekly rows (`weekday` set) and per-date overrides (`day` set) share one
+// table: an override REPLACES the weekday's periods for that date, which is
+// exactly what `periodsFor` does with them. A blackout is its own table, not
+// a zero-period override — "closed, and here is why" is a fact worth storing,
+// and an override with no rows is indistinguishable from no override.
+//
+// Two EXCLUSION constraints (hand-written) refuse overlapping periods on the
+// same weekday or the same date. Two Dinners 17:00–22:00 and 21:00–23:00
+// would silently offer the 21:00–22:00 slots twice, each with its own pacing
+// cap — an allocation-shaped bug, so it gets an allocation-shaped mechanism.
+
+model ServicePeriod {
+  id String @id @default(uuid()) @db.Uuid
+  /// 0 = Sunday. Exactly one of weekday / day is set (CHECK).
+  weekday Int?
+  /// Restaurant-calendar YYYY-MM-DD this override replaces the weekday for.
+  day     String?
+  /// "Dinner" — the host's word, and the floor view's group heading.
+  name    String
+  /// Local minutes since midnight, on the 15-minute grid (CHECK). Close is exclusive.
+  openMinute        Int
+  closeMinute       Int
+  /// Explicit last seating (P0-10). Null = a turn must end by close.
+  lastSeatingMinute Int?
+  /// Max covers whose seating starts in one 15-minute bucket.
+  pacingCap         Int
+
+  @@index([weekday])
+  @@index([day])
+}
+
+/// A date the restaurant is closed, whatever the weekly periods say.
+model Blackout {
+  /// Restaurant-calendar YYYY-MM-DD (CHECK).
+  day    String  @id
+  /// Shown to the host on the hours screen; never sent to a guest.
+  reason String?
+}
+
 // ─── Reservations (P0-3). Every column a reader displays is a COPY taken at
 // booking; nothing here is recomputed from today's floor plan or turn bands.
 

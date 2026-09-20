@@ -647,3 +647,68 @@ V-009 committed at 0e5723e.
 V-010 committed at de48ec8.
 CI caught an order-sensitive assertion in `floor.test.ts` (a `groupBy` with no
 `orderBy`); fixed in a follow-up commit, see WRITEUP Defects Found.
+
+## V-011 — Service periods, blackouts and pacing
+
+**Built:**
+- `core/availability.ts`: two predicates pulled out of the slot loop —
+  `periodAt` (which period contains a local minute) and `withinSeating`
+  (does a turn fit, or does an explicit last seating allow it to overhang).
+  The engine, the floor view's grouping and the new hours diff all call
+  them; no second copy of "is this inside service hours" exists.
+  `outsideHours(schedule, rows)` is the hours-edit diff warning (P0-10),
+  pure: which upcoming reservations a schedule *would* strand, each labelled
+  `closed` (no period contains it) or `overhang` (inside a period, but past
+  its last seating or running past close).
+- Migration `service_schedule`: `ServicePeriod` (weekly rows keyed by
+  `weekday`, per-date overrides keyed by `day`, XOR'd by CHECK) and
+  `Blackout`. Two EXCLUSION constraints — one per weekday, one per date —
+  refuse overlapping periods. CHECKs cover the 15-minute grid, a positive
+  window, a last seating inside its own period, and a positive pacing cap.
+  The migration seeds Firebird's own hours.
+- `db/schedule.ts`: `loadSchedule` builds the engine's `Schedule` from rows
+  (a null `lastSeatingMinute` becomes *absent*, because that is what the
+  engine branches on). `editSchedule(edit, tz, now, mode)` is the only
+  writer: it applies the edit, reloads the schedule, runs `outsideHours`
+  against the live upcoming rows, and rolls back unless the host forced it.
+- `apps/web`: `/host/hours` — weekly periods, single-date overrides and
+  closed dates, with add/remove forms and the diff warning; plain forms and
+  server actions, behind the existing `/host` passcode gate. A pending edit
+  round-trips through the URL and is re-parsed and re-checked on the way
+  back. `lib/restaurant.ts` no longer holds a schedule.
+
+**Tested:** `availability.test.ts` gains 6 `outsideHours` cases (covered,
+`closed`, blackout, `overhang`, last-seating-decides, all rows not just the
+first). `schedule.test.ts` (13): the round trip weekly/override/blackout,
+null-vs-absent last seating, both exclusion constraints and their
+non-collisions, four CHECK refusals, `not_found`, the diff warning writing
+nothing, `force` landing it with the party still booked, a tightened last
+seating stranding only the overhanging turn, `now`/status filtering, and
+`check` never committing. e2e `hours.spec.ts` (5): periods rendered with cap
+and last seating + axe, a clean blackout, a blackout over a booked date
+(warning names the party, nothing written, Cancel, then Save anyway), an
+overlapping period refused, and an override regrouping the floor view.
+
+**Decided:**
+- **A blackout is its own table, not a zero-period override.** An override
+  with no rows is indistinguishable from no override, and "closed, and here
+  is why" is worth storing.
+- **Overlapping periods get an exclusion constraint, not a form check.**
+  Two periods sharing slots would offer them twice, each with its own
+  pacing cap — an allocation-shaped bug, so it gets the allocation-shaped
+  mechanism.
+- **The diff is computed against the applied edit inside the transaction,
+  then rolled back.** Simulating it in memory would warn using different
+  code than the one that writes.
+- **The window/grid rules live only in the migration's CHECKs.** The form
+  does not re-implement them; a second copy is the one that drifts.
+- **The timezone stays app config.** It cannot be edited from a screen
+  without rewriting every stored business day (P0-11).
+- **The migration seeds the restaurant's hours.** Single-tenant
+  configuration, not fixtures — without it a fresh database never opens.
+
+**Left behind:**
+- No edit-in-place for a period: change one by removing and re-adding. The
+  diff warning fires on the removal, which is the honest half.
+- The confirm step re-runs the check on a GET, so two hosts editing at once
+  could both be shown a clean preview. One passcode, one stand.

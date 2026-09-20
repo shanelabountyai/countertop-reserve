@@ -7,7 +7,7 @@
 // empty day — the UI has to say something true.
 
 import { fittingUnits, largestUnitSeats, turnMinutes, DEFAULT_TURN_BANDS, type FloorPlan, type TurnBands, type Unit } from './floor-plan';
-import { weekdayOf, zonedTimeToInstant } from './time';
+import { minuteOfDay, weekdayOf, zonedTimeToInstant } from './time';
 
 export const SLOT_MINUTES = 15;
 
@@ -82,6 +82,43 @@ export function periodsFor(schedule: Schedule, day: string): readonly ServicePer
   return schedule.overrides[day] ?? schedule.weekly[weekdayOf(day)] ?? [];
 }
 
+/** The period a local minute-of-day falls in. Close is exclusive; periods never overlap (DB exclusion constraint). */
+export function periodAt(periods: readonly ServicePeriod[], minute: number): ServicePeriod | undefined {
+  return periods.find((p) => minute >= p.openMinute && minute < p.closeMinute);
+}
+
+/**
+ * Does a turn starting at `minute` seat within this period (P0-10)? An
+ * explicit last seating replaces the overhang rule rather than adding to it:
+ * that is the whole point of declaring one.
+ */
+export function withinSeating(period: ServicePeriod, minute: number, turn: number): boolean {
+  return period.lastSeatingMinute === undefined ? minute + turn <= period.closeMinute : minute <= period.lastSeatingMinute;
+}
+
+export type HoursConflict<T> = { row: T; reason: 'closed' | 'overhang' };
+
+/**
+ * The hours-edit diff warning (P0-10): which already-booked reservations a
+ * schedule would strand. Pure — the caller passes the upcoming rows and the
+ * schedule as it WOULD be, and decides whether to go ahead anyway.
+ *
+ * `closed` = no period contains the seating at all (including a blackout);
+ * `overhang` = inside a period but starting after its last seating, or a turn
+ * that now runs past close.
+ */
+export function outsideHours<T extends { businessDay: string; startAt: Date; turnMinutes: number }>(
+  schedule: Schedule,
+  rows: readonly T[],
+): HoursConflict<T>[] {
+  return rows.flatMap((row): HoursConflict<T>[] => {
+    const minute = minuteOfDay(row.startAt, schedule.timezone);
+    const period = periodAt(periodsFor(schedule, row.businessDay), minute);
+    if (!period) return [{ row, reason: 'closed' as const }];
+    return withinSeating(period, minute, row.turnMinutes) ? [] : [{ row, reason: 'overhang' as const }];
+  });
+}
+
 export function availability(input: AvailabilityInput): Availability {
   const { day, partySize, plan, schedule, reservations, now } = input;
   if (!Number.isInteger(partySize) || partySize < 1) throw new Error(`Invalid party size: ${partySize}`);
@@ -104,15 +141,10 @@ export function availability(input: AvailabilityInput): Availability {
       const s = start.getTime();
       const base = { minute, start, period: period.name };
 
-      const withinSeating =
-        period.lastSeatingMinute === undefined
-          ? minute + turnMs / 60_000 <= period.closeMinute
-          : minute <= period.lastSeatingMinute;
-
       let reason: SlotReason | null = null;
       let free: Unit[] = [];
       if (s <= now.getTime()) reason = 'past';
-      else if (!withinSeating) reason = 'closed';
+      else if (!withinSeating(period, minute, turnMs / 60_000)) reason = 'closed';
       else {
         free = freeUnits(units, reservations, s, turnMs);
         const bucketCovers = reservations

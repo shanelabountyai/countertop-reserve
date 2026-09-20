@@ -198,6 +198,15 @@ first project's own record of it.
   The allocation was right; the assertion was order-sensitive. Fixed with
   an explicit `orderBy`.
 
+- **V-011: a DB default that reads as drift.** The new `ServicePeriod` table
+  was written with `id UUID PRIMARY KEY DEFAULT gen_random_uuid()`, which is
+  perfectly good SQL and exactly wrong here: Prisma's `@default(uuid())`
+  mints the id client-side, so `migrate diff` saw a default in the database
+  that the schema does not declare and failed. Caught by running the CI drift
+  check locally before committing, not by CI. Every other uuid id in this
+  schema is minted client-side; the migration's own seed rows now pass
+  `gen_random_uuid()` explicitly instead.
+
 ## Skills Learned / Functions Unlocked
 
 *(filled in as phases land.)*

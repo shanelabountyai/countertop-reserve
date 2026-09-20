@@ -254,3 +254,32 @@ only if nobody has been seated there since, and says so if they have. The
 screen refreshes itself every ten seconds from a server-issued marker, not
 the tablet's clock, and stops polling when the tab is hidden. The whole
 screen sits behind a passcode.
+
+## V-011 — When the restaurant is open
+
+Opening hours were, until now, a line in the code. They are now something
+the host edits from the same tablet they seat people on: a page listing
+what the restaurant serves every week, the dates that run differently, and
+the dates it is closed altogether.
+
+Three things a schedule has to say, and now can. **Last seating**, said out
+loud instead of inferred — a dinner service that closes at 22:00 can still
+take a 20:45 five-top and let them finish, because the restaurant decided
+that, not the arithmetic. **Pacing**, as covers per fifteen minutes, so a
+kitchen never gets forty people at 19:00 because forty tables happened to
+be free. And **one date at a time**: a wine dinner on the 12th replaces
+that Thursday's normal service, and only the 12th.
+
+The part that matters most is what happens when hours change *after*
+people have booked. Shortening dinner, blacking out a date, tightening a
+last seating — each of those can leave a party holding a reservation for a
+time the restaurant will not be serving. So an edit that would do that is
+not saved. The screen stops and names them: who, what time, how many, and
+whether the restaurant would simply be closed or their table would run
+past the end of service. Nothing has been written at that point. The host
+can back out, or say save anyway — and if they do, the hours change and
+those guests stay booked, visible, and someone's to phone.
+
+Two periods that overlap are refused outright. Hours that share slots would
+quietly offer the same table twice under two different pacing caps, which
+is exactly the kind of double-booking this system is built not to do.

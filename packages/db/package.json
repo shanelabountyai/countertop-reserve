@@ -22,6 +22,7 @@
     "./inbound": "./inbound.ts",
     "./messages": "./messages.ts",
     "./sweep": "./sweep.ts",
-    "./floor": "./floor.ts"
+    "./floor": "./floor.ts",
+    "./schedule": "./schedule.ts"
   }
 }

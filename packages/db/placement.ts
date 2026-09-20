@@ -37,7 +37,7 @@ import {
 import { Prisma, prisma, type Reservation } from './index';
 import { newManageToken } from './messages';
 
-/** Restaurant config that is not in the database yet (V-011 moves the schedule). */
+/** Restaurant config for a placement. `schedule` comes from `loadSchedule` (V-011). */
 export type PlacementConfig = {
   schedule: Schedule;
   overSeatCap: number;
