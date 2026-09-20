@@ -39,7 +39,7 @@ async function book(over: Partial<PlaceRequest> = {}) {
   return res.reservation;
 }
 const get = (id: string) => prisma.reservation.findUniqueOrThrow({ where: { id }, include: { holds: true, messages: true, events: { orderBy: { id: 'asc' } } } });
-const message = (id: string, kind: string) => prisma.outboundMessage.findUnique({ where: { reservationId_kind: { reservationId: id, kind } } });
+const message = (id: string, kind: string) => prisma.outboundMessage.findFirst({ where: { reservationId: id, kind } });
 
 beforeEach(async () => {
   await resetDatabase();

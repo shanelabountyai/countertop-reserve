@@ -226,7 +226,13 @@ model OutboundMessage {
   reservation Reservation?    @relation(fields: [reservationId], references: [id], onDelete: Restrict)
   inbound     InboundMessage? @relation(fields: [inboundMessageId], references: [id], onDelete: Restrict)
 
-  @@unique([reservationId, kind])
+  /// (reservationId, kind) is unique in the database, but PARTIALLY: it
+  /// excludes `change_confirmed`/`change_failed`, which are per-change, not
+  /// one-per-reservation (V-012). Prisma has no syntax for a WHERE clause on
+  /// an index, so declaring it here would make the drift check demand a full
+  /// unique index forever. It lives in the migration only, like the EXCLUDE
+  /// constraints — which means `findUnique({ reservationId_kind })` is gone
+  /// and readers use `findFirst`.
   @@index([status, createdAt])
 }
 

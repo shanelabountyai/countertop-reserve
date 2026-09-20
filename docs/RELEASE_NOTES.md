@@ -283,3 +283,37 @@ those guests stay booked, visible, and someone's to phone.
 Two periods that overlap are refused outright. Hours that share slots would
 quietly offer the same table twice under two different pacing caps, which
 is exactly the kind of double-booking this system is built not to do.
+
+## Booking a table, and changing your mind
+
+The guest side is open. Pick how many people, pick a night, pick a time,
+leave a name and a mobile number — that is the whole of it, and it works
+without JavaScript, because a reservation form that needs a modern browser
+is a reservation someone made by phone instead.
+
+The part worth pointing at is what the time picker does with the times you
+*cannot* have. It shows them. A seven o'clock that is fully booked is on
+screen, crossed out, with "fully booked" beside it. A nine o'clock past the
+last seating says "not serving." A guest who is simply shown an empty
+evening learns nothing and calls; a guest who can see that the restaurant is
+busy at seven and free at eight forty-five books eight forty-five. Nothing
+is hidden to make the page look tidier.
+
+Every confirmation text carries a link, and that link is the reservation.
+Open it and you see the booking as it stands right now — the time, the
+party, whether we have your confirmation yet, and the last text we sent you,
+word for word as it was sent. From there you can move it or cancel it.
+
+Moving a booking is the case that had to be built carefully. It is not
+"release the table, then take a new one" — that leaves a gap where the guest
+owns nothing and someone else can walk into it. The new table is taken and
+the old one given up in a single step, so either you have moved or you have
+not. If the time you picked went while you were deciding, or your bigger
+party no longer fits anywhere, the answer is no and your original booking is
+exactly where you left it. You get a text saying so, with a link back.
+
+Two quieter things. Rescheduling counts as confirming — someone who takes
+the trouble to move a booking has plainly told us they are coming, and they
+should not then be released for never replying to a text. And cancelling
+hands the table back that second: the host can seat a walk-in into it
+immediately, not after some overnight tidy-up.

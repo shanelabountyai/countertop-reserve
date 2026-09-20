@@ -127,6 +127,8 @@ describe('reply templates (Appendix A)', () => {
     bookLink: 'https://firebird.example/book',
     phone: '+15035550199',
     count: '9',
+    // The long form of {was}: a change that moved days carries the date too.
+    was: `${whenSlots(NOW, TZ).date} ${whenSlots(NOW, TZ).time}`,
     replyKeys: REPLY_KEYS,
     choices: Array.from({ length: 9 }, (_, i) => `${i + 1}) Sat, Oct 10 10:45 PM`).join(', '),
   };

@@ -23,6 +23,7 @@
     "./messages": "./messages.ts",
     "./sweep": "./sweep.ts",
     "./floor": "./floor.ts",
-    "./schedule": "./schedule.ts"
+    "./schedule": "./schedule.ts",
+    "./guest": "./guest.ts"
   }
 }

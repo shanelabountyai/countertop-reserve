@@ -5,9 +5,11 @@ import { expect, test } from '@playwright/test';
 // the production build serves on 3500, and the axe wiring is live from
 // commit one rather than bolted on after the floor view exists —
 // accessibility added late is accessibility argued about late.
-test('the app serves on this repo port', async ({ page }) => {
+test('the app serves on this repo port, and the front door is the booking flow', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Countertop Reserve' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Firebird Kitchen' })).toBeVisible();
+  await page.getByRole('link', { name: 'Book a table' }).click();
+  await expect(page.getByRole('heading', { name: 'Book a table' })).toBeVisible();
 });
 
 test('the landing page has no detectable accessibility violations', async ({ page }) => {

@@ -8,8 +8,10 @@
 /**
  * `confirmation` (on booking), `reminder` and `released` (the deadline sweep)
  * and `table_ready` (the host, to a waitlisted guest) are owned by the
- * reservation, one each. The rest are replies to an inbound
- * text (P0-6, Appendix A), one per inbound message.
+ * reservation, one each. `change_confirmed` and `change_failed` are owned by
+ * the reservation too but are per-change, not one-per-reservation — a guest
+ * may move twice (V-012; the unique index excludes them). The rest are
+ * replies to an inbound text (P0-6, Appendix A), one per inbound message.
  */
 export const MESSAGE_KINDS = [
   'confirmation',
@@ -18,6 +20,8 @@ export const MESSAGE_KINDS = [
   'confirmed',
   'cancelled',
   'change_link',
+  'change_confirmed',
+  'change_failed',
   'choose',
   'no_reservation',
   'unrecognised',
@@ -26,6 +30,9 @@ export const MESSAGE_KINDS = [
   'table_ready',
 ] as const;
 export type MessageKind = (typeof MESSAGE_KINDS)[number];
+
+/** The kinds a reservation may queue more than one of. Mirrors the partial unique index. */
+export const REPEATABLE_KINDS: readonly MessageKind[] = ['change_confirmed', 'change_failed'];
 
 /** `queued → sent → delivered | failed`; a send the provider refuses outright goes `queued → failed`. */
 export const DELIVERY_STATUSES = ['queued', 'sent', 'delivered', 'failed'] as const;
@@ -42,7 +49,7 @@ export const canDeliver = (from: DeliveryStatus, to: DeliveryStatus) => NEXT[fro
 /** Documented in the outgoing text itself (P0-6). V-007 parses exactly these. */
 export const REPLY_KEYS = 'Reply C to confirm, X to cancel, CHANGE to change.';
 
-export const SLOTS = ['restaurant', 'date', 'time', 'party', 'link', 'replyKeys', 'bookLink', 'phone', 'count', 'choices'] as const;
+export const SLOTS = ['restaurant', 'date', 'time', 'party', 'link', 'replyKeys', 'bookLink', 'phone', 'count', 'choices', 'was'] as const;
 export type Slots = Partial<Record<(typeof SLOTS)[number], string>>;
 export type Templates = Record<MessageKind, string>;
 
@@ -56,6 +63,10 @@ export const DEFAULT_TEMPLATES: Templates = {
   confirmed: 'Confirmed - {party} on {date} at {time}. See you then. Reply X to cancel or CHANGE to reschedule.',
   cancelled: 'Cancelled - {date} at {time}. Thanks for letting us know. Book again anytime: {bookLink}',
   change_link: 'Change your {date} {time} booking here: {link} - your current table is held until you submit.',
+  // A5/A6. `{was}` is the booking as it stood: the time alone when the day is
+  // unchanged, date and time when the guest moved days.
+  change_confirmed: 'Updated - {party} on {date} at {time}. Your previous {was} booking is released.',
+  change_failed: "{time} isn't available for {party}. Your {was} booking is unchanged. Other times: {link}",
   choose: 'You have {count} upcoming: {choices}. Reply with the number, then C or X.',
   no_reservation: "We don't see an upcoming reservation for this number. Book here: {bookLink}",
   unrecognised: 'Sorry - I only understand C (confirm), X (cancel), CHANGE, or HELP.',

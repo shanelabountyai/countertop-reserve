@@ -714,3 +714,79 @@ overlapping period refused, and an override regrouping the floor view.
   could both be shown a clean preview. One passcode, one stand.
 
 V-011 committed at 3ffc19b.
+
+## V-012 — Guest-facing booking flow
+
+**Built:**
+- `core/messages.ts`: two new kinds, `change_confirmed` and `change_failed`
+  (Appendix A's A5 and A6), and the `{was}` slot they need — the booking as
+  it stood.
+- Migration `guest_change_messages`: the `outbound_kind_known` CHECK grows
+  the two kinds, and `(reservationId, kind)` becomes a PARTIAL unique index
+  that excludes them.
+- `db/placement.ts`: `changeReservation` gains two things. A **no-op guard**
+  — a request for the time and party it already has returns
+  `changed: false`, writes nothing and logs nothing — and
+  **confirmation-by-changing**: a guest-driven change moves `booked` to
+  `confirmed` through the ONE lifecycle module, as its own event beside the
+  change event.
+- `db/guest.ts`: `dayAvailability` (a day's slots for a party size, every
+  unavailable one carrying its reason), `loadManage` (the live reservation
+  plus its newest message), `guestChange` and `guestCancel`. The token is
+  validated against the shape `newManageToken` mints before it ever reaches
+  the database.
+- `apps/web`: `/book` (party → date → time → details, each step a query
+  parameter), `/m/[token]` (the manage page), a shared `SlotGrid`, and
+  `lib/guest.ts`, which reads the schedule per request.
+
+**Tested:** `guest.test.ts` (20): the slot list keeps unavailable times with
+their reasons, a too-large party gets a reason and no slots, a blackout
+reaches the flow; a malformed token never reaches the database; the newest
+message supersedes the old one; a change moves its holds and texts A5; a
+change into a size that no longer fits leaves the original intact and texts
+A6; a guest change confirms a `booked` party and a host change does not; the
+`{was}` slot carries the date across a day change; a double submit writes
+nothing; two changes queue two texts; a cancelled reservation refuses;
+no consent means no text; cancel releases the table into inventory that
+same instant and texts A7. e2e `book.spec.ts` (8): the whole journey, an
+unavailable time shown with its reason + axe, a too-large party, E.164
+refused by the browser *and* by the server with the attribute removed, the
+change, a refused change, the cancel freeing the table, and a bad token as
+a 404.
+
+**Decided:**
+- **`(reservationId, kind)` unique becomes partial.** It exists so a retry
+  cannot text a guest twice about the same thing — one confirmation, one
+  reminder, one release. A change result is not that: it is per change, and
+  a guest may move twice. What stops a double-submit texting twice is the
+  no-op guard, not the index.
+- **The unique index is declared only in the migration.** Prisma has no
+  syntax for a partial index, so `@@unique` in `schema.prisma` would make
+  the drift check demand a full one forever. It lives beside the EXCLUDE
+  constraints instead, and `findUnique({ reservationId_kind })` is gone.
+- **A guest-driven change counts as that guest's confirmation.** The sweep
+  judges a reservation against its original `createdAt`, so a `booked`
+  party who reschedules past that deadline would be released out from under
+  the change they just made. A host-driven change confirms nothing — the
+  host moved it, not the guest.
+- **The change text is queued after the change commits, not inside it.** A
+  change that succeeded must not be undone by a message that would not
+  render. This is the opposite of a booking, where the confirmation is
+  queued in the booking's own transaction.
+- **A slot picked in the URL is a day and a minute-of-day, never an
+  instant.** The timezone turns them into the instant server-side, so a
+  guest cannot hand us a time that means something other than what they saw.
+- **The manage token is the whole of the authorisation.** No reservation id
+  appears in any guest URL or form, and a bad token 404s exactly like one
+  that never existed.
+- **E.164 is validated twice, on purpose.** A `pattern` attribute so the
+  browser refuses before submit (P0-12 asks for it), and
+  `invalidGuestField` on the server, which is the one that decides.
+
+**Left behind:**
+- `{was}` carries the date only when the day changed. Same-day is the common
+  move and the shorter text.
+- The manage page has no edit for name, note or tags — only time, party and
+  cancel, which are the two that touch inventory.
+- `dayAvailability` reads outside a transaction, so a slot shown bookable
+  can still be refused at submit. That is the design: the constraint decides.

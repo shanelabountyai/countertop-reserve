@@ -207,6 +207,57 @@ first project's own record of it.
   schema is minted client-side; the migration's own seed rows now pass
   `gen_random_uuid()` explicitly instead.
 
+- **V-012: a partial unique index is invisible to Prisma, and the drift
+  check says so.** The change-result texts (A5/A6) needed
+  `(reservationId, kind)` to stop being unique for two of the fourteen
+  kinds, so the migration replaced the index with a partial one. Leaving
+  `@@unique([reservationId, kind])` in `schema.prisma` made
+  `prisma migrate diff` report "Added unique index on columns
+  (reservationId, kind)" forever — it cannot represent a `WHERE` clause, so
+  it sees the partial index as no index at all. The fix is to declare it
+  only in the migration, beside the EXCLUDE constraints, and accept losing
+  `findUnique({ reservationId_kind })`. Caught by running CI's drift check
+  locally before committing, the same way V-011's was.
+
+- **V-012: `tsc -p .` at the repo root does not typecheck `apps/web`.** Six
+  real errors — `Date | null` reaching a `Date` field among them — passed a
+  root typecheck and failed the gate's second step. The web workspace has
+  its own tsconfig with its own `strict` settings and its own include paths.
+  `npm run typecheck` is the only check that means anything; the root
+  invocation is a false green. The errors themselves were one cause: a
+  `never`-returning `back()` helper only narrows control flow when its call
+  is `return`ed, not when it stands alone as a statement.
+
+- **V-012: a `'use server'` file may export nothing but async functions.**
+  The consent sentence was put beside the write it is stored by, which is
+  where it belongs and is not where Next.js allows it. Turbopack refused
+  the build with "Only async functions are allowed to be exported" — and
+  then, confusingly, with "Export book doesn't exist in target module" for
+  the function that plainly does, because the whole module had been
+  rejected. Lint and typecheck are both clean on this; only `build` catches
+  it, which is exactly why the gate runs the build as its own step.
+
+- **V-012: `Number('')` is 0, so "no time picked yet" became a booking for
+  midnight.** `parseSlot` validated the minute-of-day with
+  `Number.isInteger(Number(minute))`, and an absent `at` parameter sailed
+  through as minute 0. `/book?party=2&day=…` with no time chosen rendered a
+  full details form headed "Party of 2 on 2026-10-14 at 12:00 AM". Submitting
+  it would have been refused by the engine, so nothing could have been
+  double-booked — but the guest would have been asked for their phone number
+  to book a table that does not exist. Found in a Playwright failure snapshot
+  taken for an unrelated assertion, which is an argument for reading the whole
+  snapshot rather than the one line the error points at. The fix is to test
+  the string for digits before converting it.
+
+- **V-012: a fixed future date in an e2e spec outlived the page's own
+  horizon.** The spec used `2027-03-05`, copied from `hours.spec.ts`, where it
+  is fine because that spec writes rows straight to the database. The booking
+  page has a 60-day horizon expressed as `max` on the date input, so Chromium
+  refused to submit the day form and every spec that went through the UI timed
+  out waiting for a time that had never been asked for. The failure looked like
+  a missing link, three steps downstream of the cause. The spec now reads
+  `today + 30 days` from Postgres in the restaurant's timezone.
+
 ## Skills Learned / Functions Unlocked
 
 *(filled in as phases land.)*

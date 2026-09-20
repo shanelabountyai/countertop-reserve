@@ -24,6 +24,7 @@ import {
   isUpcoming,
   parseStatus,
   plusMs,
+  transition,
   turnMinutes,
   DEFAULT_TURN_BANDS,
   type DayReason,
@@ -220,7 +221,8 @@ export type ChangeRequest = {
 };
 
 export type Change =
-  | { ok: true; reservation: Reservation }
+  /** `changed: false` — the request asked for the time and party it already has; nothing was written. */
+  | { ok: true; reservation: Reservation; changed: boolean; was: { startAt: Date; partySize: number } }
   /** `not_changeable`: not upcoming (cancelled, seated, released…) or already started. */
   | { ok: false; reason: DayReason | 'no_longer_available' | 'not_changeable' };
 
@@ -229,8 +231,15 @@ export type Change =
  * new window goes through the engine and the exclusion constraint like a new
  * booking. The old holds are deleted and the new ones inserted under one
  * savepoint, so a refusal restores the old holds with it — there is no
- * moment, committed or not, where the guest holds nothing. Status is kept: a
- * confirmed guest who moves stays confirmed.
+ * moment, committed or not, where the guest holds nothing.
+ *
+ * A guest-driven change COUNTS AS THAT GUEST'S CONFIRMATION (V-008): the
+ * deadline sweep judges a reservation against its original `createdAt`, so a
+ * `booked` party who moves after that deadline would otherwise be released
+ * out from under the change they just made. Someone who reschedules by hand
+ * has plainly told us they are coming. A host-driven change confirms nothing
+ * — the host moved it, not the guest — and a `confirmed` guest who moves
+ * stays confirmed either way.
  */
 export async function changeReservation(req: ChangeRequest, config: PlacementConfig): Promise<Change> {
   return prisma.$transaction(async (tx): Promise<Change> => {
@@ -238,14 +247,30 @@ export async function changeReservation(req: ChangeRequest, config: PlacementCon
     if (!current || !isUpcoming(parseStatus(current.status)) || req.now.getTime() >= current.startAt.getTime()) {
       return { ok: false, reason: 'not_changeable' };
     }
+    const was = { startAt: current.startAt, partySize: current.partySize };
+    // A double-submitted form, or a guest who re-picked the slot they already
+    // have. Nothing moved, so nothing is logged and nothing is texted.
+    if (req.startAt.getTime() === current.startAt.getTime() && req.partySize === current.partySize) {
+      return { ok: true, reservation: current, changed: false, was };
+    }
     const f = await fit(tx, req, config, current.id);
     if (!f.ok) return f;
+    // booked → confirmed, through the ONE lifecycle module; `keep` tables.
+    const confirm = req.source === 'host' ? null : transition({ status: parseStatus(current.status), startAt: current.startAt }, 'confirmed', 'guest', req.now);
+    const status = confirm?.ok ? confirm.to : parseStatus(current.status);
     const updated = await firstUnit(tx, f.units, async (tableIds) => {
       await tx.tableHold.deleteMany({ where: { reservationId: current.id } });
       await tx.tableHold.createMany({ data: tableIds.map((tableId) => ({ reservationId: current.id, tableId, startAt: req.startAt, endAt: f.endAt })) });
       return tx.reservation.update({
         where: { id: current.id },
-        data: { businessDay: req.day, startAt: req.startAt, partySize: req.partySize, turnMinutes: f.turn, tableIds },
+        data: {
+          businessDay: req.day,
+          startAt: req.startAt,
+          partySize: req.partySize,
+          turnMinutes: f.turn,
+          tableIds,
+          ...(confirm?.ok && { status, statusChangedAt: req.now }),
+        },
       });
     });
     if (!updated) return { ok: false, reason: 'no_longer_available' };
@@ -259,6 +284,12 @@ export async function changeReservation(req: ChangeRequest, config: PlacementCon
         note: `changed from ${current.startAt.toISOString()} party ${current.partySize} at ${current.tableIds.join('+')}`,
       },
     });
-    return { ok: true, reservation: updated };
+    // Its own row: "the guest moved" and "the guest confirmed" are two facts.
+    if (confirm?.ok) {
+      await tx.reservationEvent.create({
+        data: { reservationId: current.id, at: req.now, fromStatus: confirm.from, toStatus: confirm.to, source: req.source, note: 'confirmed by changing' },
+      });
+    }
+    return { ok: true, reservation: updated, changed: true, was };
   }, { maxWait: 10_000, timeout: 10_000 });
 }
