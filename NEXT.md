@@ -39,11 +39,24 @@ Both rotations need the Neon console, so neither can be done from a session.
 keep the new value out of the transcript, the shell history and `ps`. Do not
 re-derive them; do not paste a password into a session to get help.
 
-1. **Rotate `npg_HqiYs7SGU8wT`** — Countertop's Neon password, exposed in a
-   session transcript. Update Countertop's Vercel env after. Same recipe,
-   different repo.
-2. **Rotate this project's Neon password** (`npg_01EMsexvmbAV`); it is in
-   `.env.production.local` and in Vercel, both easy to update.
+Identify each Neon project by its **endpoint**, not by its password — the
+endpoint is in the connection string's host, is not a secret, and is what the
+console lists. <https://console.neon.tech/app/projects> → Branch → Roles →
+`neondb_owner` → Reset password.
+
+1. **Countertop's Neon password** — endpoint `ep-empty-dream-a5px6wnr`
+   (`us-east-2`). Exposed in a session transcript. Lives in
+   `~/Projects/Restaurant ordering/.env.production.local` and that project's
+   Vercel env; its local dev is on `localhost`, so nothing local breaks. Same
+   recipe, different repo.
+2. **This project's Neon password** — endpoint `ep-dawn-snow-b4dkr9e2`
+   (`c-6.us-east-2`). In `.env.production.local` and in Vercel, both easy to
+   update.
+
+**Never write a password into this file.** Both of these were named literally
+here until 2026-09-21, which put them in the repo and in its history on top of
+the transcript that leaked one of them. Once rotated, those committed strings
+are dead text and need no history rewrite — but do not re-create the problem.
 
 Rotating breaks the deployed site until Vercel has the new value, and a
 `vercel --prod` redeploy is required — an env change alone does not reach a
