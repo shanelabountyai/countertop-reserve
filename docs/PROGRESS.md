@@ -935,3 +935,5 @@ this entry is what a future session needs to not undo any of it.
   The occupancy assertion measures PHYSICAL occupancy from seat/clear events
   and treats a party still `seated` at close as never having left, bounded to
   its own business day.
+
+V-015 committed at df59aa6.
