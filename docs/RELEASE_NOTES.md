@@ -6,6 +6,22 @@ version of the same history. For the screens themselves, `docs/screenshots/`
 has six shots of the seeded 60-cover service, indexed in `WRITEUP.md` under
 *The Screens*.
 
+## Where the portfolio artifacts live
+
+An artifact nothing in the repo points at is lost the next time the gallery
+gets long, so both URLs live here. Both are private — they open for the
+account that owns them, and are shared deliberately, one reader at a time.
+
+| Artifact | URL |
+|---|---|
+| **Countertop Reserve in Brief** — the one-page exec brief, written for a non-engineering reader | <https://claude.ai/artifact/78aJhCD9HZePoiXjun93f6> |
+| **Lab Intelligence Ledger** — the cross-project LinkedIn queue; this project's drafts are tagged `Countertop Reserve` (11 of them as of 2026-09-21) | <https://claude.ai/artifact/Ai5xKScgT2sWtqXRQ1ZA8i> |
+| **Live demo** — the seeded 60-cover service, behind one shared password | <https://reserve.labintelligence.co> |
+
+The brief quotes figures that must match `WRITEUP.md` → *By the Numbers*.
+Both were re-measured by running the suite on 2026-09-21; every one of them
+had drifted stale-low. Re-run before changing either.
+
 ---
 
 ## V-001 — Project scaffold, built on top of a finished sibling project's scars

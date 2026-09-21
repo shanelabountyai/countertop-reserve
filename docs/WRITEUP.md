@@ -692,19 +692,24 @@ is not the hardest — the method found it, not me.)*
 | | |
 |---|---|
 | **Backlog items shipped** | 13 of 13 (V-001 → V-013) |
-| **Commits** | 31 (one per item, plus its SHA-recording follow-up) |
-| **Application code** | 5,042 lines of TypeScript/TSX |
-| **Test code** | 3,548 lines — 0.70 lines of test per line of source |
-| **Unit tests** | **623 passing**, across 15 files |
-| **End-to-end tests** | **29 passing**, against a production build, axe included |
-| **Hand-written migrations** | 9 (+ `migration_lock.toml`), none by `db push` |
+| **Commits** | 49 (one per item, plus its SHA-recording follow-up) |
+| **Application code** | 6,505 lines of TypeScript/TSX |
+| **Test code** | 4,598 lines — 0.71 lines of test per line of source |
+| **Unit tests** | **768 passing**, across 19 files |
+| **End-to-end tests** | **32 passing**, against a production build, axe included |
+| **Hand-written migrations** | 10 (+ `migration_lock.toml`), none by `db push` |
 | **Database-enforced invariants** | 3 `EXCLUDE` constraints, 1 partial unique index, 1 append-only trigger, plus CHECKs on every enumerated column |
 | **Documentation** | 2,612 lines across the PRD, backlog, PROGRESS, release notes, the demo script and this file |
-| **Defects recorded** | 16, of which **3 were found by mutating the code before commit**, 2 by running CI's drift check locally, and 1 at a schema review before any migration existed |
-| **Defects that survived a commit** | 2, neither in shipped code — the demo script's own environment setup, and a build-only typecheck failure that could not appear until the project first deployed. Both are cases where the gate runs a *different* configuration than the one that broke. The other 14 were caught by the gate, a mutation pass, a drift check or a review |
+| **Defects recorded** | 30 — 16 found while building, of which **3 by mutating the code before commit**, 2 by running CI's drift check locally, and 1 at a schema review before any migration existed; plus **14 from the external code review** (V-015), which read finished, deployed code |
+| **Defects that survived a commit** | 16. Two from the build itself, neither in shipped code — the demo script's own environment setup, and a build-only typecheck failure that could not appear until the project first deployed; both are cases where the gate runs a *different* configuration than the one that broke. The other 14 are the review's, and all of them **had shipped** — the honest number on this row, and the argument for the review being a step rather than a favour. The remaining 14 of the 30 never survived a commit |
 | **Capstone service** | 18 tables · 2 combination sets · 2 service periods · 1 blackout · 60 covers booked in advance, 88 on the book, 76 seated · all 7 PRD ugly cases · 28 assertions |
 | **Double-seated tables** | 0 |
 | **Stranded parties** | 0 |
 
 Gate at close: `npm run gate` green on all five steps — lint, typecheck,
-623 unit tests (6.4s), production build, 29 e2e (17.8s).
+768 unit tests (7.4s), production build, 32 e2e.
+
+**These figures are as of V-015 (2026-09-21), re-measured by running the suite
+rather than by editing the previous row.** Every one of them had drifted
+stale-low since the close of V-013 — the unit count by 145 — which is the
+ordinary fate of a number a human types into a table. Re-run before quoting.

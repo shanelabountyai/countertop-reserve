@@ -1,4 +1,4 @@
-# Next: the review is remediated. Two credentials still want rotating.
+# Next: closure deliverables are done. Two credentials still want rotating.
 
 **<https://reserve.labintelligence.co>** — Vercel + Neon, behind one shared
 password (`grep DEMO_ACCESS_PASSWORD .env.production.local`).
@@ -7,25 +7,29 @@ password (`grep DEMO_ACCESS_PASSWORD .env.production.local`).
 Gate green at V-015: lint, typecheck, **768 unit across 19 files**, build,
 **32 e2e** — and 768 again under `TZ=Pacific/Kiritimati`.
 
-## What V-015 changed that will surprise you
+## The previous handoff was wrong about what was missing
 
-- **Tests refuse to run unless the environment NAMES the database they may
-  wipe.** `TEST_DATABASE_NAME=reserve_test` is set by `npm test` and
-  `npm run test:e2e`; CI sets `reserve_ci`. Running bare `vitest` now wipes
-  nothing and says why. A local hostname is no longer sufficient, because
-  `reserve_dev` is local too.
-- **Playwright no longer reuses a running server.** If 3500 is held it
-  refuses to start rather than adopting whatever is there. Stop your
-  `npm run dev:demo` before a sweep, or set `E2E_REUSE_SERVER=1` knowing you
-  are vouching for that server.
-- **`fit` re-reads the schedule from the database**, under a shared advisory
-  lock. `config.schedule` now supplies only the timezone. A DB test that
-  passes an in-memory `Schedule` must also call `seedSchedule(...)` from
-  `packages/db/testing` or every slot comes back `closed`.
-- **`vitest.config.ts` now includes `apps/web/**`.** A test you add under
-  `apps/web` will actually run — which was not true before.
-- **A booking with no SMS consent is never auto-released.** Deliberate, and
-  the PRD's one unanswered case. See `docs/PROGRESS.md` → V-015 → Decided.
+It said the exec brief and the LinkedIn drafts did not exist. **Both already
+did.** Check before rebuilding — a duplicate brief is exactly how Clearpath
+ended up with two in the gallery. Both URLs are now recorded in
+`docs/RELEASE_NOTES.md` → *Where the portfolio artifacts live*, which is the
+place to look first from now on.
+
+What this session actually did: updated both with the V-015 review material,
+and corrected the numbers.
+
+- **Every figure in `WRITEUP.md` → *By the Numbers* had drifted stale-low**,
+  the unit count by 145 (623 → **768**, 15 → **19** files, 29 → **32** e2e,
+  9 → **10** migrations, 31 → **49** commits, 5,042 → **6,505** lines of
+  source). Re-measured by running the suite, not by editing the old row. The
+  table now says so, and says to re-run before quoting.
+- **Defects recorded is 30, not 16** — 16 found while building, plus the
+  review's 14. The honest row is *Defects that survived a commit: 16*,
+  because all fourteen of the review's had already shipped.
+- The brief now carries the review as its second of five calls, and the
+  ledger has three new drafts (30, 31, 32) mined from it: the impossible
+  date `2026-09-31`, the booking released for not answering a question never
+  asked, and the fifteen tests that had never executed.
 
 ## Outstanding
 
@@ -33,13 +37,21 @@ Gate green at V-015: lint, typecheck, **768 unit across 19 files**, build,
    session transcript. Update Countertop's Vercel env after.
 2. **Rotate this project's Neon password** (`npg_01EMsexvmbAV`); it is in
    `.env.production.local` and in Vercel, both easy to update.
-3. **Closure deliverables, still missing.** `docs/DEMO.md` exists; the
-   exec-brief artifact and the LinkedIn drafts do not. The project is not
-   `good to clear` at the project level until both exist, and the write-up's
-   new *From an external code review* section is the best raw material the
-   posts have had.
 
-## Wrinkle a future session will hit
+Nothing else is open. With the rotations done, this project is closed at the
+project level: shipped code, `docs/DEMO.md`, the exec brief, the LinkedIn
+drafts.
 
-`db:seed:demo` writes the *dev* database and `npm run dev` is `dev:test`.
-Use `npm run dev:demo` for the local demo — it loads `.env.local` alone.
+## Things a future session still trips on
+
+- **Tests refuse to run unless the environment NAMES the database they may
+  wipe.** `TEST_DATABASE_NAME=reserve_test` is set by `npm test` and
+  `npm run test:e2e`; CI sets `reserve_ci`. Bare `vitest` wipes nothing and
+  says why.
+- **Playwright no longer reuses a running server.** Stop `npm run dev:demo`
+  before a sweep, or set `E2E_REUSE_SERVER=1` and own that choice.
+- **`fit` re-reads the schedule from the database** under a shared advisory
+  lock. A DB test passing an in-memory `Schedule` must also call
+  `seedSchedule(...)` from `packages/db/testing`, or every slot is `closed`.
+- **`db:seed:demo` writes the *dev* database and `npm run dev` is
+  `dev:test`.** Use `npm run dev:demo` for the local demo.
