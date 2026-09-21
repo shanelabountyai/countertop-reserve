@@ -31,6 +31,12 @@ the environment NAMES the database they are allowed to destroy:
 TEST_DATABASE_NAME=reserve_test    # set by `npm test` / `npm run test:e2e`
 ```
 
+An environment that already sets `TEST_DATABASE_NAME` wins over the script's
+default — that is how CI declares `reserve_ci` while the scripts default to
+`reserve_test`. (A bare `TEST_DATABASE_NAME=reserve_test npm test ...` in the
+script would SHADOW the inherited one, which is exactly how CI first went red
+on this.)
+
 `DATABASE_URL` must resolve to exactly that database, on a local host. A
 local hostname alone is not enough — `reserve_dev`, the demo database the
 floor view reads, is also on localhost, and the test scripts fall back to
