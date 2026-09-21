@@ -54,15 +54,16 @@ npm run db:migrate:dev
 npm run db:seed:demo
 
 # 3. Start the app ON THE DEV DATABASE (see the trap below).
-npx dotenv -e .env.local -- npm run dev -w apps/web
+npm run dev:demo
 ```
 
 > [!IMPORTANT]
 > **`npm run dev` serves the *test* database, not the dev one.** The root `dev`
-> script is `dev:test`, which loads `.env.test` first and first-wins. Start it
-> the way shown above, or you will demo an empty restaurant and spend the first
-> three minutes of your meeting debugging it. This is the single most likely
-> thing to go wrong.
+> script is `dev:test`, which loads `.env.test` first and first-wins — so it
+> reads a different database than `db:seed:demo` just wrote. `dev:demo` loads
+> `.env.local` only, which is the one the seed used. Use `dev:demo` for every
+> demo, or you will show an empty restaurant and spend the first three minutes
+> of your meeting debugging it.
 
 The seed prints its own ledger. It should end like this — if the numbers differ,
 the fixture has drifted and you should stop and read `docs/WRITEUP.md` rather
@@ -121,15 +122,14 @@ Nothing real is committed. The values live in `.env.local`, which is gitignored
 |---|---|---|
 | Staff passcode | `grep STAFF_PASSCODE .env.local` | One shared passcode for `/host`, `/host/hours`, `/host/report`. There are no user accounts — a deliberate simplification, and worth naming out loud as one. |
 | Manage-page token | query below | The guest's entire authorisation. No reservation id appears in any guest URL. |
-| Webhook secret | **not in `.env.local`** — see below | Only `.env.test` carries one. The webhook fails closed without it. |
-| Cron secret | **not in `.env.local`** — same | Only needed if you want to run a sweep on camera. |
+| Webhook secret | `grep SMS_WEBHOOK_SECRET .env.local` | The webhook fails closed without it — `503 webhook not configured`. |
+| Cron secret | `grep CRON_SECRET .env.local` | Bearer token for the deadline sweep route. Same fail-closed behaviour. |
 
-> [!WARNING]
-> `.env.local` ships with four variables — `DATABASE_URL`, `DIRECT_URL`, `PORT`,
-> `STAFF_PASSCODE`. It has **no** `SMS_WEBHOOK_SECRET` and **no** `CRON_SECRET`;
-> only `.env.test` does. Everything in the screen-by-screen demo works without
-> them. The [live SMS](#live-sms-the-webhook-without-a-carrier) section does
-> not — it returns `503 webhook not configured` until you supply one.
+> [!NOTE]
+> `.env.local` carries all six variables, including both secrets, so the
+> [live SMS](#live-sms-the-webhook-without-a-carrier) section works with no
+> extra setup. The values there are local demo values, not real credentials;
+> a deployed environment would set its own.
 
 **Tokens change on every reseed — look one up, never hardcode it:**
 
@@ -345,19 +345,15 @@ npm run gate                # lint, typecheck, 623 unit, production build, 29 e2
 > someone assume otherwise — a live carrier is an explicit non-goal in the PRD.
 
 You can still drive a real state change through the real webhook, signature and
-all. **Start the server with a secret** — the value is arbitrary locally, it
-just has to match what you sign with:
+all. No extra setup: `npm run dev:demo` already loads `SMS_WEBHOOK_SECRET` from
+`.env.local`.
+
+In another terminal — this confirms tomorrow's reservation exactly the way a
+guest's reply would. The secret has to match what the server loaded, so read it
+rather than retyping it:
 
 ```bash
-SMS_WEBHOOK_SECRET=demo-secret-local \
-  npx dotenv -e .env.local -- npm run dev -w apps/web
-```
-
-Then, in another terminal — this confirms tomorrow's reservation exactly the way
-a guest's reply would:
-
-```bash
-SECRET=demo-secret-local
+SECRET=$(grep '^SMS_WEBHOOK_SECRET=' .env.local | cut -d= -f2-)
 BODY='{"providerMessageId":"demo-1","from":"+15035550114","body":"C"}'
 SIG=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "$SECRET" -hex | awk '{print $NF}')
 curl -s -X POST http://localhost:3500/api/sms/inbound \
@@ -403,10 +399,10 @@ from a stranger with `curl`.
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Empty restaurant, no reservations | The server is on the **test** database | Restart with `npx dotenv -e .env.local -- npm run dev -w apps/web` |
+| Empty restaurant, no reservations | The server is on the **test** database | You ran `npm run dev`. Restart with `npm run dev:demo` |
 | `/m/<token>` 404s | Token is from a previous seed | Re-run the token query — they're regenerated every seed |
 | `/host` bounces to login | No cookie yet | Sign in at `/host/login` once; it carries to hours and report |
-| Webhook returns 503 | `SMS_WEBHOOK_SECRET` unset | It fails closed on purpose. Set it in `.env.local` |
+| Webhook returns 503 | `SMS_WEBHOOK_SECRET` unset | It fails closed on purpose. `.env.local` carries one — check you started with `dev:demo` |
 | Webhook returns 401 | Signature mismatch | The HMAC is over the **raw body** — don't reformat the JSON between signing and sending |
 | Port 3500 busy | Another project, or a stale server | `lsof -ti :3500 \| xargs kill -9`. This repo owns 3500 |
 | Seed numbers don't match | The fixture has drifted | Stop. `npm test -- capstone` will say which case broke |
@@ -433,7 +429,7 @@ link:
 
 ```bash
 npm run db:seed:demo
-npx dotenv -e .env.local -- npm run dev -w apps/web   # separate terminal
+npm run dev:demo                                      # separate terminal
 
 MANAGE_TOKEN=<a booked reservation's token> \
 STAFF_PASSCODE=$(grep '^STAFF_PASSCODE=' .env.local | cut -d= -f2-) \

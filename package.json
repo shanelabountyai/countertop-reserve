@@ -11,9 +11,11 @@
   "scripts": {
     "preflight": "if [ -x \"$HOME/.claude/bin/swapcheck\" ]; then \"$HOME/.claude/bin/swapcheck\" --quiet; fi",
     "predev": "npm run preflight",
+    "predev:demo": "npm run preflight",
     "pretest:e2e": "npm run preflight",
     "dev": "npm run dev:test",
     "dev:test": "dotenv -e .env.test -e .env.local -- npm run dev -w apps/web",
+    "dev:demo": "dotenv -e .env.local -- npm run dev -w apps/web",
     "build": "npm run build -w apps/web",
     "build:test": "dotenv -e .env.test -e .env.local -- npm run build -w apps/web",
     "start:test": "dotenv -e .env.test -e .env.local -- npm run start -w apps/web",

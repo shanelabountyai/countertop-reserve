@@ -30,15 +30,19 @@ only thing that genuinely changes it is P2's real SMS integration — that
 needs a public webhook URL, which reopens the deploy decision (currently
 "nowhere, deliberately").
 
-## Two wrinkles a future session will hit
+## Two demo wrinkles — fixed 2026-09-21
 
-**`db:seed:demo` writes the *dev* database, but plain `npm run dev` serves
-the *test* one.** Start the server with
-`npx dotenv -e .env.local -- npm run dev -w apps/web` to see the demo data.
-`docs/DEMO.md` leads with this because it is the most likely thing to go
-wrong in front of an audience.
+Both are gone; `docs/DEMO.md` no longer warns about either.
 
-**`.env.local` has no `SMS_WEBHOOK_SECRET` and no `CRON_SECRET`** — only
-`.env.test` does. The webhook fails closed (`503`) without one, so the live
-SMS section of the demo needs the server started with a secret inline. Also
-in `docs/DEMO.md`.
+- **`db:seed:demo` wrote the dev database while `npm run dev` served the test
+  one.** There is now a `dev:demo` script (`dotenv -e .env.local -- npm run dev
+  -w apps/web`) that loads the same env the seed used. `npm run dev` still means
+  `dev:test` — unchanged, that is what the gate wants.
+- **`.env.local` had no `SMS_WEBHOOK_SECRET` and no `CRON_SECRET`**, so the
+  live-SMS section returned `503`. Both are set there now (local demo values,
+  gitignored). `.env.example` documents that both env files need them.
+
+Verified against a running server: `/book` 200, `/m/<token>` 200 off the dev
+database, an unsigned webhook call 401 (not 503), and the doc's signed call
+returned its documented body byte for byte. Reseeded afterwards; the ledger
+matches `docs/DEMO.md`.
