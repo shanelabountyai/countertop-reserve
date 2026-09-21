@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start -p 3500",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
     "pretypecheck": "next typegen",
     "test:e2e": "playwright test"
   },

@@ -390,6 +390,22 @@ first project's own record of it.
   — every command run once before shipping — and these two were the ones the
   rule was written about.
 
+- **V-014: the build typechecked files that a production install cannot
+  resolve — invisible until the first deploy.** `next build` runs TypeScript
+  over everything `apps/web/tsconfig.json` includes, which was `**/*.ts`:
+  the Playwright specs and the unit tests too. Those import `pg` and
+  `vitest`, both root devDependencies, and Vercel's production install omits
+  devDependencies — so the first deploy failed with nine `TS2307 Cannot find
+  module` errors in files that have no business being in a production build.
+  Every one of them predated this item; the project had simply never
+  deployed, so nothing had ever run `tsc` without devDependencies present.
+  The fix is two configs rather than one: `tsconfig.json` excludes `e2e` and
+  `**/*.test.ts` so the build does not see them, and `tsconfig.test.json`
+  includes exactly those so the gate still does. Verified the second config
+  is not a no-op by planting a deliberate type error in a test file and
+  confirming `npm run typecheck` failed on it — a config that silently
+  matches nothing looks identical to a config that passes.
+
 ## Skills Learned / Functions Unlocked
 
 - **An exclusion constraint, and knowing when a unique constraint is a
@@ -522,8 +538,8 @@ is not the hardest — the method found it, not me.)*
 | **Hand-written migrations** | 9 (+ `migration_lock.toml`), none by `db push` |
 | **Database-enforced invariants** | 3 `EXCLUDE` constraints, 1 partial unique index, 1 append-only trigger, plus CHECKs on every enumerated column |
 | **Documentation** | 2,612 lines across the PRD, backlog, PROGRESS, release notes, the demo script and this file |
-| **Defects recorded** | 15, of which **3 were found by mutating the code before commit**, 2 by running CI's drift check locally, and 1 at a schema review before any migration existed |
-| **Defects that survived a commit** | 1, and not in shipped code — the demo script's own environment setup, which no gate step can reach because the gate runs on `.env.test`. The other 14 were caught by the gate, a mutation pass, a drift check or a review |
+| **Defects recorded** | 16, of which **3 were found by mutating the code before commit**, 2 by running CI's drift check locally, and 1 at a schema review before any migration existed |
+| **Defects that survived a commit** | 2, neither in shipped code — the demo script's own environment setup, and a build-only typecheck failure that could not appear until the project first deployed. Both are cases where the gate runs a *different* configuration than the one that broke. The other 14 were caught by the gate, a mutation pass, a drift check or a review |
 | **Capstone service** | 18 tables · 2 combination sets · 2 service periods · 1 blackout · 60 covers booked in advance, 88 on the book, 76 seated · all 7 PRD ugly cases · 28 assertions |
 | **Double-seated tables** | 0 |
 | **Stranded parties** | 0 |
