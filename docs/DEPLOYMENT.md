@@ -112,9 +112,11 @@ read -rs NEWPW    # paste from Neon, nothing echoes
 export NEWPW      # REQUIRED — perl reads the environment, not the shell
 
 # 1. rewrite both strings in the local file (pooler + direct share the password).
-#    Matches an EMPTY password too, so a file left broken by a failed run is
-#    still repairable by re-running this line.
-perl -pi -e 's{(neondb_owner:)[A-Za-z0-9]*@}{$1$ENV{NEWPW}\@}g' .env.production.local
+#    [^@]* — everything up to the @. NOT a character class listing what a
+#    password may contain: Neon passwords hold an underscore (npg_...), so
+#    [A-Za-z0-9]* never reaches the @ and matches NOTHING. perl -pi rewrites
+#    the file either way, so a zero-match run looks exactly like a success.
+perl -pi -e 's{(neondb_owner:)[^@]*@}{$1$ENV{NEWPW}\@}g' .env.production.local
 
 # 2. PROVE IT BEFORE TOUCHING VERCEL. Refuses to continue on an empty or
 #    short password, then makes one real connection with it.
@@ -155,6 +157,25 @@ reading a single log line — the password length is the whole diagnosis:
 grep -oE 'neondb_owner:[^@]*@' .env.production.local | awk -F'[:@]' '{print length($2)}'
 # two identical non-zero numbers = fine. Two zeros = the export was missed.
 ```
+
+**Length proves almost nothing — every Neon password is 16 characters.** It
+catches an empty password and nothing else. In particular it cannot tell a
+rotated password from an unrotated one, which is the failure that actually
+happened: the substitution matched nothing, the file kept its old value, and
+all the shape checks passed. **The `psql` connection is the only decisive
+check**, because after a reset the old password is *rejected* — that is why
+it runs before Vercel and not after.
+
+To compare two values without printing either (the file against a password
+you believe is current, or a shell variable against the file):
+
+```bash
+grep '^DIRECT_URL=' .env.production.local | sed -E 's#.*neondb_owner:([^@]*)@.*#\1#' \
+  | tr -d '\n' | shasum | cut -c1-12      # fingerprint of what is IN THE FILE
+printf %s "$NEWPW" | shasum | cut -c1-12  # fingerprint of what you PASTED
+```
+
+Equal fingerprints after a rotation mean the substitution did not fire.
 
 ## The two routes the password gate does not cover
 

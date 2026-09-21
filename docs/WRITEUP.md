@@ -595,6 +595,36 @@ Two test defects the review surfaced, which matter more than they look:
   each, because a guard that has only ever seen a good file is indistinguish-
   able from `true`.
 
+- **The fix for that defect shipped with a second defect inside it, and the
+  fixture proved the wrong thing.** The repair pattern written above —
+  `s{(neondb_owner:)[A-Za-z0-9]*@}{...}` — cannot match a Neon password.
+  Neon passwords are `npg_…`, and `_` is not in `[A-Za-z0-9]`, so the class
+  stops at `npg` and never reaches the `@`. Zero matches, every time, on every
+  real password. It appeared to work when first written because the file it
+  was tested against had the *empty* password left behind by the first bug,
+  and `[A-Za-z0-9]*` happily matches zero characters. A fixture built from the
+  broken state proved only that the tool handled the broken state.
+
+  What made it expensive is that `perl -pi` rewrites the file whether or not
+  it substitutes anything, so a zero-match run updates the modification time
+  and is indistinguishable from a success by every cheap check: the file looks
+  edited, both strings are present, they are identical to each other, and the
+  password is a plausible 16 characters. It ran twice against Countertop, was
+  diagnosed both times as a mis-paste, and cost a second irreversible Neon
+  reset before the pattern itself came under suspicion.
+
+  Three lessons, and the middle one is the general case. The character class
+  was wrong: `[^@]*` describes the *delimiter*, not what a password may
+  contain, and a pattern that enumerates permitted characters in a secret is
+  a bug waiting for the first secret that adds one. **Length is not identity**
+  — every Neon password is 16 characters, so the length check could never
+  distinguish rotated from unrotated, and shape checks that all pass on an
+  unchanged file are theatre. The decisive check was the one that talks to the
+  live system: after a reset the old password is *rejected*, so `psql` is the
+  only step that can tell "wrote the new value" from "wrote nothing." Compare
+  secrets by fingerprint (`shasum | cut -c1-12`) when you need to know whether
+  two values differ without putting either on screen.
+
 ## Skills Learned / Functions Unlocked
 
 - **An exclusion constraint, and knowing when a unique constraint is a
