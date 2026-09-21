@@ -1,77 +1,63 @@
-# Next: closure deliverables are done. Two credentials still want rotating.
+# Next: V-016, the table board. Both credential rotations are done.
 
 **<https://reserve.labintelligence.co>** — Vercel + Neon, behind one shared
-password (`grep DEMO_ACCESS_PASSWORD .env.production.local`).
-`docs/DEPLOYMENT.md` is the full recipe.
+password (`grep DEMO_ACCESS_PASSWORD .env.production.local` — that file, not
+`.env.local`, which does not have it). The browser prompt is HTTP Basic and
+**the username is ignored**; type anything. `/host` wants a separate
+`STAFF_PASSCODE`. `docs/DEPLOYMENT.md` is the full recipe.
 
 Gate green at V-015: lint, typecheck, **768 unit across 19 files**, build,
-**32 e2e** — and 768 again under `TZ=Pacific/Kiritimati`.
+**32 e2e** — and 768 again under `TZ=Pacific/Kiritimati`. Every commit since
+is docs-only, so that still holds without a re-run.
 
-## The previous handoff was wrong about what was missing
+## Closed on 2026-09-21
 
-It said the exec brief and the LinkedIn drafts did not exist. **Both already
-did.** Check before rebuilding — a duplicate brief is exactly how Clearpath
-ended up with two in the gallery. Both URLs are now recorded in
-`docs/RELEASE_NOTES.md` → *Where the portfolio artifacts live*, which is the
-place to look first from now on.
+- **Both Neon passwords rotated.** This project's and Countertop's. The
+  leaked values are rejected by Neon; both sites verified serving real data.
+  No password literal remains in any tracked file.
+- **Countertop moved to `ordering.labintelligence.co`** (Cloudflare CNAME →
+  `cname.vercel-dns.com`, unproxied). `countertop-mu.vercel.app` still works
+  as a Vercel alias. Its `DEMO.md`, portfolio body, smoke-test default and
+  the build-log row all name the new URL; the dated history entries were
+  deliberately left alone.
+- **PRD addendum v1.1 written** — `prd-countertop-reserve.md`, spec for the
+  two items below.
 
-What this session actually did: updated both with the V-015 review material,
-and corrected the numbers.
+## Pick up here
 
-- **Every figure in `WRITEUP.md` → *By the Numbers* had drifted stale-low**,
-  the unit count by 145 (623 → **768**, 15 → **19** files, 29 → **32** e2e,
-  9 → **10** migrations, 31 → **49** commits, 5,042 → **6,505** lines of
-  source). Re-measured by running the suite, not by editing the old row. The
-  table now says so, and says to re-run before quoting.
-- **Defects recorded is 30, not 16** — 16 found while building, plus the
-  review's 14. The honest row is *Defects that survived a commit: 16*,
-  because all fourteen of the review's had already shipped.
-- The brief now carries the review as its second of five calls, and the
-  ledger has three new drafts (30, 31, 32) mined from it: the impossible
-  date `2026-09-31`, the booking released for not answering a question never
-  asked, and the fifteen tests that had never executed.
+**V-016 — the table board** (`docs/backlog.md` → Phase 5, spec in the PRD
+addendum). Read-only, ships alone, no new write path. A new `tableStates()`
+in `packages/core` beside `availability()`: table-major where that one is
+slot-major. The requirement that carries the item is **every `free` carries
+its free-until** — a table free now but held in 40 minutes is not free for a
+90-minute walk-in, and a bare green dot is the defect the spec exists to
+prevent.
 
-## Outstanding
+**V-017 — manual assignment** comes after, and is the correctness-critical
+one. A host-named unit is an *input* to the same allocation transaction,
+never a bypass of it. Already resolved at spec time, do not re-open: a
+`seated` party may be moved, and the turn window **carries** from the
+original seat event rather than restarting.
 
-Both rotations need the Neon console, so neither can be done from a session.
-**The commands for the half that can be are now in `docs/DEPLOYMENT.md` →
-*Rotating the Neon password*** — verified against a fixture, and written to
-keep the new value out of the transcript, the shell history and `ps`. Do not
-re-derive them; do not paste a password into a session to get help.
-
-Identify each Neon project by its **endpoint**, not by its password — the
-endpoint is in the connection string's host, is not a secret, and is what the
-console lists. <https://console.neon.tech/app/projects> → Branch → Roles →
-`neondb_owner` → Reset password.
-
-1. **Countertop's Neon password** — endpoint `ep-empty-dream-a5px6wnr`
-   (`us-east-2`). Exposed in a session transcript. Lives in
-   `~/Projects/Restaurant ordering/.env.production.local` and that project's
-   Vercel env; its local dev is on `localhost`, so nothing local breaks. Same
-   recipe, different repo.
-2. **This project's Neon password** — endpoint `ep-dawn-snow-b4dkr9e2`
-   (`c-6.us-east-2`). In `.env.production.local` and in Vercel, both easy to
-   update.
-
-**Never write a password into this file.** Both of these were named literally
-here until 2026-09-21, which put them in the repo and in its history on top of
-the transcript that leaked one of them. Once rotated, those committed strings
-are dead text and need no history rewrite — but do not re-create the problem.
-
-Rotating breaks the deployed site until Vercel has the new value, and a
-`vercel --prod` redeploy is required — an env change alone does not reach a
-running deployment.
-
-Nothing else is open. With the rotations done, this project is closed at the
-project level: shipped code, `docs/DEMO.md`, the exec brief, the LinkedIn
-drafts.
+Recommend **Opus** for both — V-017 especially.
 
 ## Things a future session still trips on
 
+- **Never write a password into this file.** Both Neon passwords were named
+  literally here until 2026-09-21, which put them in the repo and its
+  history. Identify a database by its **endpoint** instead — this project is
+  `ep-dawn-snow-b4dkr9e2` (`c-6.us-east-2`), Countertop is
+  `ep-empty-dream-a5px6wnr` (`us-east-2`).
+- **`perl -pi` rewrites a file whether or not it substitutes anything.** A
+  zero-match run updates the mtime and looks exactly like success. This cost
+  two irreversible Neon resets. Match `[^@]*`, never a class enumerating what
+  a secret may contain — Neon passwords hold an underscore.
+- **Length is not identity.** Every Neon password is 16 characters, so a
+  length check cannot tell rotated from unrotated. The `psql` connection is
+  the only decisive check, which is why it runs *before* Vercel.
 - **Tests refuse to run unless the environment NAMES the database they may
   wipe.** `TEST_DATABASE_NAME=reserve_test` is set by `npm test` and
-  `npm run test:e2e`; CI sets `reserve_ci`. Bare `vitest` wipes nothing and
-  says why.
+  `npm run test:e2e`; CI sets `reserve_ci`.
 - **Playwright no longer reuses a running server.** Stop `npm run dev:demo`
   before a sweep, or set `E2E_REUSE_SERVER=1` and own that choice.
 - **`fit` re-reads the schedule from the database** under a shared advisory
