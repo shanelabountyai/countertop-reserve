@@ -3,9 +3,19 @@
 How to show this project to someone in 12 minutes, screen by screen, with the
 exact commands, the accounts, and what to say at each stop.
 
-There is no deployed copy — deliberately (`WRITEUP.md` → *Scaling Caveats*).
-The deliverable is the seeded service, so the demo runs on a laptop. Everything
-below assumes you are in the repo root.
+**There are two ways to demo this.**
+
+**Hosted** — <https://reserve.labintelligence.co>, behind one shared password
+(`grep DEMO_ACCESS_PASSWORD .env.production.local`). Send the link and the
+password; no laptop, no setup. Same seeded service as below. Use this for
+anyone remote, and for "can you show me something you built?"
+
+**Local** — everything below. Still the better demo when you are *present*,
+because you can run the live webhook from a terminal and show state move. It
+is also the fallback if the hosted copy is mid-reseed.
+
+The seeded 60-cover service is the deliverable either way. Everything below
+assumes you are in the repo root.
 
 **Contents**
 

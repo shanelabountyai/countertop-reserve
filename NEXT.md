@@ -1,48 +1,36 @@
-# Next: nothing. The project is closed and the optional list is empty too.
+# Next: the deploy is live. Docs are current. Two credentials want rotating.
 
-`docs/backlog.md` has zero unchecked boxes. `docs/WRITEUP.md` is complete
-(13 of 13). Every Open Question in the PRD is now marked *resolved* — the
-last two closed 2026-09-21 by recording where each V1 answer already lives
-in the code, not by building anything.
+**<https://reserve.labintelligence.co>** — Vercel + Neon, behind one shared
+password (`grep DEMO_ACCESS_PASSWORD .env.production.local`). Added at V-014,
+which reversed the PRD's "nowhere, deliberately."
 
-`docs/screenshots/` has the six-shot portfolio pass, indexed in the
-WRITEUP under *The Screens*, with the reshoot recipe beside it.
+`docs/DEPLOYMENT.md` is the full recipe. `docs/backlog.md` has zero unchecked
+boxes. Gate green: 636 unit across 16 files, 29 e2e, all five steps.
 
-Gate green at close: 623 unit across 15 files, 29 e2e, all five steps.
+## What V-014 changed
 
-CI does not run on docs-only pushes (`paths-ignore: '**/*.md'` and
-`docs/**`), so the last four commits have no CI run and should not be
-waited for.
+- **`vercel.json`** — the repo never had one. Root Directory must stay `.` on
+  Vercel or the file is never read, and you silently lose the `ignoreCommand`
+  (build minutes) and the sweep `crons`.
+- **The demo password gate** (`apps/web/lib/demo-gate.ts`). Unset locally and
+  in CI, so the suite never sees it. `/api/sms/inbound` and `/api/cron/sweep`
+  are exempt — each authenticates itself.
+- **The seed opt-in.** `resetDatabase()` still refuses a remote host unless
+  `SEED_ALLOW_HOST` names it exactly. Reseeding the hosted demo is the only
+  time you will type it; `docs/DEPLOYMENT.md` step 6 has the command.
+- **Two tsconfigs.** `next build` was typechecking the e2e specs and unit
+  tests, which import devDependencies a production install omits. Defect 16.
 
-## Closure deliverables (per `~/.claude/CLAUDE.md` → *Definition of done*)
+## Outstanding
 
-All three exist as of 2026-09-21:
+1. **Rotate `npg_HqiYs7SGU8wT`** — Countertop's Neon password, exposed in a
+   session transcript. Update Countertop's Vercel env after.
+2. **Rotate this project's Neon password** (`npg_01EMsexvmbAV`) at some point;
+   it is in `.env.production.local` and in Vercel, both easy to update.
+3. **Reseed if the demo data drifts.** The password gate is what keeps
+   strangers out of it, but a reseed is one command.
 
-| Deliverable | Where |
-|---|---|
-| Demo script | [`docs/DEMO.md`](docs/DEMO.md) — screen by screen, every command run once before shipping |
-| Exec brief | https://claude.ai/artifact/78aJhCD9HZePoiXjun93f6 — *Countertop Reserve in Brief* (private) |
-| LinkedIn drafts | https://claude.ai/artifact/Ai5xKScgT2sWtqXRQ1ZA8i — *Lab Intelligence Ledger*, 8 drafts tagged `countertop-reserve` (posts 12–19) |
+## Wrinkle a future session will hit
 
-**Do not start a session here expecting work.** P1-2…P1-8 and all of P2 are
-deferred by decision, not pending. If you want to reopen this project, the
-only thing that genuinely changes it is P2's real SMS integration — that
-needs a public webhook URL, which reopens the deploy decision (currently
-"nowhere, deliberately").
-
-## Two demo wrinkles — fixed 2026-09-21
-
-Both are gone; `docs/DEMO.md` no longer warns about either.
-
-- **`db:seed:demo` wrote the dev database while `npm run dev` served the test
-  one.** There is now a `dev:demo` script (`dotenv -e .env.local -- npm run dev
-  -w apps/web`) that loads the same env the seed used. `npm run dev` still means
-  `dev:test` — unchanged, that is what the gate wants.
-- **`.env.local` had no `SMS_WEBHOOK_SECRET` and no `CRON_SECRET`**, so the
-  live-SMS section returned `503`. Both are set there now (local demo values,
-  gitignored). `.env.example` documents that both env files need them.
-
-Verified against a running server: `/book` 200, `/m/<token>` 200 off the dev
-database, an unsigned webhook call 401 (not 503), and the doc's signed call
-returned its documented body byte for byte. Reseeded afterwards; the ledger
-matches `docs/DEMO.md`.
+`db:seed:demo` writes the *dev* database and `npm run dev` is `dev:test`.
+Use `npm run dev:demo` for the local demo — it loads `.env.local` alone.

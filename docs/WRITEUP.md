@@ -5,7 +5,7 @@
 > happen**, not reconstructed at the end.
 
 **Repo:** https://github.com/shanelabountyai/countertop-reserve (private)
-**Live demo:** _(none — the deliverable is the seeded 60-cover service: `npm run db:seed:demo`; see Scaling Caveats)_
+**Live demo:** <https://reserve.labintelligence.co> — the seeded 60-cover service, behind one shared password (V-014). The carrier is still stubbed; a demo deployment is not production.
 **Built with:** Claude Code + Next.js (App Router) · TypeScript · Postgres/Prisma · Tailwind · Vitest/Playwright + axe
 **Status:** Complete — 13 of 13 backlog items
 
@@ -133,18 +133,23 @@ first project's own record of it.
   `ADVANCE`, and several of the ugly cases depend on a particular table being
   busy at a particular minute. Re-ordering that list fails the suite loudly
   rather than silently, but it does fail it. The file says so at the top.
-- **No deploy target — decided, not defaulted (settled 2026-09-21, at
-  close).** Countertop went to Vercel + Neon because its PRD named that as
-  the target; this PRD has no equivalent line, and the question stayed open
-  through the whole build. The answer is no, for a reason rather than by
-  drift: the seeded 60-cover service (V-013, `npm run db:seed:demo`) exercises
-  every screen and all seven ugly cases locally, and the one thing a
-  deployment would genuinely add — a live carrier on the wire — is an
-  explicit Non-Goal (the outbox is real, the wire is stubbed). A hosted
-  instance would therefore show nothing the seed doesn't, in exchange for
-  build minutes and a database branch to maintain on a finished project.
-  **What would reopen it:** P2's real SMS integration, which needs a public
-  webhook URL a carrier can reach. Nothing short of that.
+- **Deployed after all, and the first answer was wrong (V-014).** This PRD
+  never named a deploy target, so the question stayed open through the whole
+  build and got answered at close as *no, deliberately* — the argument being
+  that the only thing a hosted instance adds is a live carrier, which is an
+  explicit Non-Goal. That argument is sound about SMS and wrong about the
+  demo, because it assumes the carrier is the only thing a deployment buys.
+  What it actually buys is a link you can send. Every sibling project is
+  already a `labintelligence.co` subdomain; this was the only one that needed
+  its owner present at a laptop to be seen at all, and the exec brief said
+  "walkthrough on request" where the others say "click here." Now at
+  `reserve.labintelligence.co`, Vercel + Neon, behind a shared password.
+  **The carrier is still stubbed** — nothing about deploying changed that,
+  and the outbox is still the real part. **The honest caveat is that a demo
+  deployment is not production:** no backups, no monitoring, no on-call, and
+  every row in it is a fixture. The lesson is the one already in *What I'd Do
+  Differently* — decide the deploy question at kickoff, because a question
+  left open until close gets answered by whoever is most tired.
 - **Floor view poll interval is fixed at 10s** (P0-9), not a backoff — the
   PRD calls this out explicitly ("a floor moves slower than a kitchen
   queue"). Noted here rather than only in the PRD so it isn't rediscovered
