@@ -115,12 +115,18 @@ first project's own record of it.
   `ADVANCE`, and several of the ugly cases depend on a particular table being
   busy at a particular minute. Re-ordering that list fails the suite loudly
   rather than silently, but it does fail it. The file says so at the top.
-- **No deploy target yet, possibly never.** Countertop went to Vercel + Neon
-  because the PRD named that as the target. This PRD doesn't have an
-  equivalent line — the seeded 60-cover demo (V-013) may be the whole
-  deliverable. Revisit once the message channel (V-006/V-007) exists, since
-  a live SMS integration is the one thing genuinely hard to demo without
-  something running somewhere.
+- **No deploy target — decided, not defaulted (settled 2026-09-21, at
+  close).** Countertop went to Vercel + Neon because its PRD named that as
+  the target; this PRD has no equivalent line, and the question stayed open
+  through the whole build. The answer is no, for a reason rather than by
+  drift: the seeded 60-cover service (V-013, `npm run db:seed:demo`) exercises
+  every screen and all seven ugly cases locally, and the one thing a
+  deployment would genuinely add — a live carrier on the wire — is an
+  explicit Non-Goal (the outbox is real, the wire is stubbed). A hosted
+  instance would therefore show nothing the seed doesn't, in exchange for
+  build minutes and a database branch to maintain on a finished project.
+  **What would reopen it:** P2's real SMS integration, which needs a public
+  webhook URL a carrier can reach. Nothing short of that.
 - **Floor view poll interval is fixed at 10s** (P0-9), not a backoff — the
   PRD calls this out explicitly ("a floor moves slower than a kitchen
   queue"). Noted here rather than only in the PRD so it isn't rediscovered
@@ -453,11 +459,12 @@ is not the hardest — the method found it, not me.)*
   than the gate is a false green, and I would wire the workspace typecheck
   into the root script on day one rather than discovering it at item twelve.
 - **Decide the deploy question at kickoff, not at the end.** The PRD never
-  named a target, so the project drifted to "no deploy, probably never" by
-  default. That is a defensible answer — the seeded service demos the whole
-  product offline, and the one thing genuinely hard to show without a
-  deployment is a live carrier, which is explicitly a Non-Goal. But it should
-  have been a decision in V-001, not a shrug in V-013.
+  named a target, so the project ran thirteen items with "deploy?" quietly
+  unanswered. The answer it eventually got — no, because the seeded service
+  shows everything and a live carrier is a Non-Goal — is the same answer it
+  would have got in V-001, and having it early would have settled a caveat
+  that instead sat marked "revisit" for a month. A PRD that doesn't name a
+  target should be made to name one, including when the target is *none*.
 - **Write the PRD's contradictions down as they're found.** P0-4's state
   line allows `confirmed → released` and P0-7 releases only unconfirmed
   reservations. Those cannot both be true. It was resolved correctly at V-004
