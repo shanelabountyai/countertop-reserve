@@ -10,18 +10,24 @@ Countertop. Start with `START-HERE.md`; the product source of truth is
 ```bash
 npm install
 createdb reserve_dev && createdb reserve_test   # or: docker compose up -d
-cp .env.example .env.local                      # then fill in DATABASE_URL/DIRECT_URL
+cp .env.example .env.local                      # then fill in every name it lists
 npm run db:migrate:all
 ```
 
 `.env.test` overrides only the database and inherits the rest from `.env.local`
-(`dotenv -e .env.test -e .env.local`, first file wins).
+(`dotenv -e .env.test -e .env.local`, first file wins). Both files need
+`SMS_WEBHOOK_SECRET`, `CRON_SECRET` and `STAFF_PASSCODE` — the webhook, the
+sweep route and the host screens all fail closed when theirs is unset.
 
 ## Running
 
 ```bash
-npm run dev          # http://localhost:3500
+npm run dev          # http://localhost:3500, on the TEST database
+npm run dev:demo     # same port, on the DEV database — what `db:seed:demo` wrote
 ```
+
+`npm run dev` is an alias for `dev:test`, so it serves the test database. Use
+`dev:demo` whenever you want to see seeded demo data (`docs/DEMO.md`).
 
 **This repo owns port 3500** (storage 3000, rental 3100, event toolkit 3200,
 bookable 3300, Countertop 3400). It is the default in `apps/web/package.json`

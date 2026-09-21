@@ -92,8 +92,8 @@ re-rendered), [hours](screenshots/5-host-hours.png), and
 [the report](screenshots/6-host-report.png).
 
 Regenerate after a UI change: `npm run db:seed:demo`, start the server on
-the dev database (`npx dotenv -e .env.local -- npm run dev -w apps/web` —
-plain `npm run dev` serves the *test* database), then
+the dev database (`npm run dev:demo` — plain `npm run dev` is `dev:test` and
+serves the *test* database, which the seed never wrote to), then
 `MANAGE_TOKEN=<any booked reservation's token> STAFF_PASSCODE=$(grep
 STAFF_PASSCODE .env.local | cut -d= -f2) node docs/screenshots/capture.mjs
 docs/screenshots`.
@@ -370,6 +370,26 @@ first project's own record of it.
   a missing link, three steps downstream of the cause. The spec now reads
   `today + 30 days` from Postgres in the restaurant's timezone.
 
+- **Post-close: the demo script's own environment was the one thing never
+  under the gate.** `npm run db:seed:demo` writes the *dev* database, but
+  `npm run dev` is an alias for `dev:test`, which loads `.env.test` first and
+  first-wins — so the documented way to start the app served a database the
+  seed had never touched, and the demo opened on an empty restaurant. The
+  same gap had a second half: `.env.local` carried no `SMS_WEBHOOK_SECRET` and
+  no `CRON_SECRET`, so the live-SMS section returned `503 webhook not
+  configured`. Both routes fail closed by design, which is correct and is
+  exactly why the omission was invisible. Neither defect could ever be caught
+  by the gate, because the gate runs on `.env.test`, where both values are
+  set and the database is the one the tests seed themselves — the failing
+  configuration is the one no automated step ever exercises. Fixed with a
+  `dev:demo` script that loads `.env.local` alone and by setting both secrets
+  there; the write-ups and `.env.example` now say both env files need them.
+  The lesson is narrower than "test your docs": an env file that only a human
+  ever loads has no coverage by construction, so the commands that use it have
+  to be run by hand before they ship. `docs/DEMO.md` already carried that rule
+  — every command run once before shipping — and these two were the ones the
+  rule was written about.
+
 ## Skills Learned / Functions Unlocked
 
 - **An exclusion constraint, and knowing when a unique constraint is a
@@ -502,9 +522,9 @@ is not the hardest — the method found it, not me.)*
 | **End-to-end tests** | **29 passing**, against a production build, axe included |
 | **Hand-written migrations** | 9 (+ `migration_lock.toml`), none by `db push` |
 | **Database-enforced invariants** | 3 `EXCLUDE` constraints, 1 partial unique index, 1 append-only trigger, plus CHECKs on every enumerated column |
-| **Documentation** | 2,218 lines across the PRD, backlog, PROGRESS, release notes and this file |
-| **Defects recorded** | 14, of which **3 were found by mutating the code before commit**, 2 by running CI's drift check locally, and 1 at a schema review before any migration existed |
-| **Defects that survived a commit** | 0 — every one above was caught by the gate, a mutation pass, a drift check or a review |
+| **Documentation** | 2,612 lines across the PRD, backlog, PROGRESS, release notes, the demo script and this file |
+| **Defects recorded** | 15, of which **3 were found by mutating the code before commit**, 2 by running CI's drift check locally, and 1 at a schema review before any migration existed |
+| **Defects that survived a commit** | 1, and not in shipped code — the demo script's own environment setup, which no gate step can reach because the gate runs on `.env.test`. The other 14 were caught by the gate, a mutation pass, a drift check or a review |
 | **Capstone service** | 18 tables · 2 combination sets · 2 service periods · 1 blackout · 60 covers booked in advance, 88 on the book, 76 seated · all 7 PRD ugly cases · 28 assertions |
 | **Double-seated tables** | 0 |
 | **Stranded parties** | 0 |
