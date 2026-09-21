@@ -16,6 +16,7 @@ account that owns them, and are shared deliberately, one reader at a time.
 |---|---|
 | **Countertop Reserve in Brief** — the one-page exec brief, written for a non-engineering reader | <https://claude.ai/artifact/78aJhCD9HZePoiXjun93f6> |
 | **Lab Intelligence Ledger** — the cross-project LinkedIn queue; this project's drafts are tagged `Countertop Reserve` (11 of them as of 2026-09-21) | <https://claude.ai/artifact/Ai5xKScgT2sWtqXRQ1ZA8i> |
+| **Build Log** — the cross-project status board; this project is its own row, `reserve`, separate from Countertop's `restaurant` | <https://claude.ai/artifact/28KeGV3xfBwcBuoMEQjFMj> |
 | **Live demo** — the seeded 60-cover service, behind one shared password | <https://reserve.labintelligence.co> |
 
 The brief quotes figures that must match `WRITEUP.md` → *By the Numbers*.
