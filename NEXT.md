@@ -33,10 +33,21 @@ and corrected the numbers.
 
 ## Outstanding
 
+Both rotations need the Neon console, so neither can be done from a session.
+**The commands for the half that can be are now in `docs/DEPLOYMENT.md` →
+*Rotating the Neon password*** — verified against a fixture, and written to
+keep the new value out of the transcript, the shell history and `ps`. Do not
+re-derive them; do not paste a password into a session to get help.
+
 1. **Rotate `npg_HqiYs7SGU8wT`** — Countertop's Neon password, exposed in a
-   session transcript. Update Countertop's Vercel env after.
+   session transcript. Update Countertop's Vercel env after. Same recipe,
+   different repo.
 2. **Rotate this project's Neon password** (`npg_01EMsexvmbAV`); it is in
    `.env.production.local` and in Vercel, both easy to update.
+
+Rotating breaks the deployed site until Vercel has the new value, and a
+`vercel --prod` redeploy is required — an env change alone does not reach a
+running deployment.
 
 Nothing else is open. With the rotations done, this project is closed at the
 project level: shipped code, `docs/DEMO.md`, the exec brief, the LinkedIn

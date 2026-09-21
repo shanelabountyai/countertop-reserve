@@ -91,6 +91,39 @@ Generate the secrets with `openssl rand -hex 32`. None of them may be the
 values in `.env.local` — those are local demo values and are documented as
 such.
 
+## Rotating the Neon password
+
+Rotate from the Neon console (Branch → Roles → `neondb_owner` → **Reset
+password**). It invalidates the old one immediately, so the deployed site is
+broken until Vercel has the new value — do the two steps back to back.
+
+**Never paste the new password into a chat transcript or a shell argument.**
+`read -rs` keeps it out of both the transcript and `~/.zsh_history`; a
+`vercel env add` that takes it on stdin keeps it out of `ps`.
+
+```bash
+read -rs NEWPW    # paste from Neon, nothing echoes
+
+# 1. rewrite both strings in the local file (pooler + direct share the password)
+perl -pi -e 's{(neondb_owner:)npg_[A-Za-z0-9]+}{$1$ENV{NEWPW}}g' .env.production.local
+
+# 2. replace both Vercel vars, Production and Preview
+for v in DATABASE_URL DIRECT_URL; do
+  for e in production preview; do
+    vercel env rm "$v" "$e" --yes
+    grep "^$v=" .env.production.local | cut -d= -f2- | tr -d '"' \
+      | vercel env add "$v" "$e"
+  done
+done
+
+unset NEWPW
+vercel --prod   # env changes do not reach a running deployment
+```
+
+Then confirm: load the site, unlock with `DEMO_ACCESS_PASSWORD`, and open a
+page that reads the database (`/host` after the passcode). A page that renders
+but shows nothing is the tell that only one of the two strings was updated.
+
 ## The two routes the password gate does not cover
 
 `/api/sms/inbound` and `/api/cron/sweep` are exempt, deliberately. Each already
