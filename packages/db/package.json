@@ -24,6 +24,7 @@
     "./sweep": "./sweep.ts",
     "./floor": "./floor.ts",
     "./schedule": "./schedule.ts",
-    "./guest": "./guest.ts"
+    "./guest": "./guest.ts",
+    "./report": "./report.ts"
   }
 }

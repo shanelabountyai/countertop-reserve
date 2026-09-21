@@ -36,6 +36,17 @@ first project's own record of it.
 
 ## Scaling Caveats and Deliberate Simplifications
 
+- **The report tallies in TypeScript, not SQL** (V-013): one read of every
+  reservation in the range, then a pass over it in memory. Right for one
+  restaurant's night and it keeps the restaurant's timezone out of Postgres.
+  A date-bucketed SQL rollup is the upgrade, and it would have to do its
+  bucketing in the restaurant's calendar rather than the server's — which is
+  precisely why it was not the starting point.
+- **The capstone fixture is hand-calculated, including table assignments**
+  (V-013). Which table each party lands on follows from the booking order in
+  `ADVANCE`, and several of the ugly cases depend on a particular table being
+  busy at a particular minute. Re-ordering that list fails the suite loudly
+  rather than silently, but it does fail it. The file says so at the top.
 - **No deploy target yet, possibly never.** Countertop went to Vercel + Neon
   because the PRD named that as the target. This PRD doesn't have an
   equivalent line — the seeded 60-cover demo (V-013) may be the whole
@@ -142,6 +153,15 @@ first project's own record of it.
   by constraint.
 
 ## Defects Found
+
+- **V-013: the report would have claimed 100% waitlist conversion on a night
+  half the waiting room walked out.** Covers deliberately exclude
+  `abandoned` — a waitlisted party who left was never on the book for a
+  time — and the first cut applied that same exclusion to every tally. But a
+  party who gave up waiting is exactly what waitlist conversion is *measured
+  against*, so removing them left only the parties who got tables: one of
+  one, every time. Caught by the pure report test before any of it reached a
+  screen. Covers exclude them; conversion counts them.
 
 - **V-003: the spec's own constraint would have double-seated tables.** A
   "unique constraint on (table, turn window)" only rejects *identical*

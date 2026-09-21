@@ -90,6 +90,10 @@ export default async function HostPage({ searchParams }: { searchParams: Promise
           {day === today ? 'Tonight' : day} · {RESTAURANT.restaurant} ·{' '}
           <a href="/host/hours" className="underline">
             Hours
+          </a>{' '}
+          ·{' '}
+          <a href="/host/report" className="underline">
+            Report
           </a>
         </p>
       </header>

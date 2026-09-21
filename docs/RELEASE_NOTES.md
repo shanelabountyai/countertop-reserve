@@ -317,3 +317,56 @@ the trouble to move a booking has plainly told us they are coming, and they
 should not then be released for never replying to a text. And cancelling
 hands the table back that second: the host can seat a walk-in into it
 immediately, not after some overnight tidy-up.
+
+## Did confirming actually help? — and one whole night, proven
+
+Two things close the build: a report a manager would use, and a full dinner
+service run end to end as a test.
+
+**The report answers a question the restaurant can act on.** Covers on the
+book against covers that sat down, per fifteen minutes, so you can see the
+shape of a night rather than a total. Then the one that matters: the no-show
+rate for parties who confirmed, beside the rate for parties who never
+replied. The whole SMS channel is an expensive bet that asking people to
+confirm makes them turn up. This is the number that says whether the bet
+paid.
+
+Getting that number right took more care than it looks. When a guest who
+confirmed then fails to turn up, their reservation ends as "no-show" — the
+confirmation is gone from the record. A report that reads the current status
+would quietly credit every no-show to the unconfirmed column and flatter the
+feature it was built to test. So it reads the event log instead, which is
+append-only and remembers that the confirmation happened.
+
+Two smaller decisions in the same spirit. A cancelled table stays counted as
+booked, because the gap between the two lines *is* the loss, and a report
+that nets its losses out of its own denominator is a report nobody should
+trust. And a rate with nothing in it prints "no data", never "0%" — a night
+with no walk-ins and a night where nobody waiting got a table are different
+facts.
+
+**The capstone is a whole service, run as a test.** Eighteen tables, two
+combination sets, two service periods, a blackout date, and a scripted
+Friday: sixty covers booked in advance, eighty-eight on the book by the end
+of the night, seventy-six seated. It runs through the same code the app
+runs — booking, texting, sweeping, seating, walk-ins — and then asserts that
+no two parties were ever at the same table at the same time, that no party
+was ever left holding nothing, and that every text sent that night
+reconciles: queued equals sent plus deferred plus dropped, with a reason on
+every drop.
+
+Woven into it are the seven cases the spec named as the ones that break
+reservation systems. A guest whose party grows into a size no table can take.
+A change request for a night the restaurant is closed. Two parties of ten
+submitting at the same instant for the one table that seats ten. Someone
+texting STOP in the middle of a thread. A number with two upcoming bookings
+replying "C" to neither in particular. The same webhook delivered twice. And
+a walk-in seated into the table a no-show just gave up.
+
+That last one is the one worth dwelling on. The walk-in is a party of ten,
+and the house has exactly one table configuration that seats ten — and half
+of it is the table the no-show was holding sixty seconds earlier. So the
+party gets in *only* because releasing a table puts it back into inventory
+that instant, rather than flagging it for someone to tidy up later. Had we
+used a party of six, they would have found a free table regardless and
+proved nothing at all.

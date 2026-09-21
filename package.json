@@ -31,6 +31,7 @@
     "db:status:test": "dotenv -e .env.test -- npm run migrate:status -w packages/db",
     "db:status": "npm run db:status:test && npm run db:status:dev",
     "db:reset:test": "dropdb --if-exists reserve_test && createdb reserve_test && npm run db:migrate:test",
+    "db:seed:demo": "dotenv -e .env.local -- tsx packages/db/seed-demo.ts",
     "db:generate": "prisma generate --schema packages/db/prisma/schema.prisma",
     "postinstall": "npm run db:generate"
   },

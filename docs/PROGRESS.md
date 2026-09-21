@@ -792,3 +792,80 @@ a 404.
   can still be refused at submit. That is the design: the constraint decides.
 
 V-012 committed at 5871161.
+
+---
+
+## V-013 — No-show & cover report, and the seeded service capstone
+
+**Built:**
+- `core/report.ts`: the P1-1 tallies as ONE pure function. Covers booked vs.
+  seated per restaurant-day and 15-minute seating bucket; no-show rate split
+  by confirmation state and by lead-time band; release rate; waitlist
+  conversion. Takes rows and a timezone, reads no clock, derives every status
+  list from `lifecycle.ts`.
+- `db/report.ts`: the one read that feeds it. Each row carries `history` —
+  every status the append-only event log says it reached — because the
+  current status cannot answer the question the report exists for.
+- `db/capstone.ts`: the seeded service. An 18-table floor plan with two legal
+  combination sets, two service periods, one blackout date, and a scripted
+  Friday dinner: 60 covers booked in advance, 88 on the book once walk-ins
+  land, 76 seated. All seven of the PRD's ugly cases, each marked `UGLY n`.
+- `db/capstone.test.ts`: 28 assertions over one run of it — each ugly case,
+  the two service invariants, the message reconciliation, and the report
+  hand-tallied against the script.
+- `apps/web/app/host/report/page.tsx` + `e2e/report.spec.ts`: the report
+  where the host already signs in. A plain GET form, so a range is a URL.
+- `npm run db:seed:demo`: the same `runSeededService` against the dev
+  database, so the demo and the fixture cannot drift apart.
+
+**Decided:**
+- **The report reads the event log, not the status.** `booked → confirmed →
+  no_show` ends as plain `no_show`, so a report that split on `status` would
+  answer "does confirming predict showing?" with a tautology. `history` comes
+  from `ReservationEvent`, which is append-only and therefore the only honest
+  source.
+- **A cancelled or released party stays in `booked` covers.** The gap between
+  the booked and seated lines IS the loss the report exists to show; netting
+  it out of the denominator would hide exactly what a manager is looking for.
+  Only `abandoned` is excluded — a waitlisted party who walked off was never
+  on the book for a time.
+- **…but `abandoned` still counts in waitlist conversion.** They are what
+  conversion is measured against. Dropping them would report 100% for a night
+  where half the waiting room gave up. The report's own test caught this.
+- **A rate with an empty denominator is `null`, not zero.** The page prints
+  "no data". A 0% no-show rate and no reservations at all are different
+  facts, and a report that conflates them gets trusted.
+- **The capstone drives the real entry points.** `placeReservation`,
+  `handleInbound`, `guestChange`, `sweep`, `hostMove`, `addWalkIn` — nothing
+  reaches past them into the tables. A demo that writes its own rows proves
+  nothing about the code that ships.
+- **The last-table race refuses with `full`, not `no_longer_available`.**
+  Both parties of ten want the same 15-minute bucket, so they serialize on
+  the pacing advisory lock and the loser's read — taken after the lock, on a
+  fresh READ COMMITTED snapshot — already sees the winner. The exclusion
+  constraint catches the cross-bucket case instead, which
+  `placement.test.ts` and `constraints.test.ts` already hold. Both are a
+  clean refusal with zero orphan holds, which is what the PRD asks for. The
+  capstone asserts what actually happens rather than what reads better.
+- **UGLY 7 is provable, not incidental.** The walk-in is a party of ten, and
+  `C2` (T16+T17) is the only unit in the house that seats ten. T16 is the
+  table the no-show just gave up — so that party is seatable *at all* only
+  because the no-show released it five minutes earlier. A party of six would
+  have landed on a free table anyway and proved nothing.
+- **Two ways to be double-seated, two assertions.** A SQL self-join over live
+  `TableHold` rows proves the end state; a replay over every party that held
+  a table or sat down proves the whole night — bounded by the `completed`
+  event, since a table cleared early is genuinely free before its turn is up.
+
+**Left behind:**
+- The fixture is hand-calculated and the table each party lands on is part of
+  it. Re-ordering `ADVANCE` moves parties between tables and will fail the
+  ugly cases that depend on a table being busy. The file says so at the top.
+- Lead-time bands are fixed (`under 4h`, `4-24h`, `1-3 days`, `3+ days`) and
+  measured in hours, not restaurant days — a duration needs no timezone.
+- The report is one read of every reservation in the range, tallied in
+  TypeScript. Right for one restaurant's night; a date-bucketed SQL rollup is
+  the upgrade, and it would have to do its bucketing in the restaurant's
+  timezone rather than the server's.
+- No CSV export and no chart library — the covers table draws its two bars
+  with a `div` each.
