@@ -936,4 +936,8 @@ this entry is what a future session needs to not undo any of it.
   and treats a party still `seated` at close as never having left, bounded to
   its own business day.
 
-V-015 committed at df59aa6.
+V-015 committed at df59aa6, with a follow-up at c22809f: the npm scripts'
+bare `TEST_DATABASE_NAME=reserve_test` shadowed the value CI exports, so
+every destructive fixture refused on the first push — the new guard working
+exactly as intended, against its own author. The scripts supply a default
+now, and an explicit declaration from the environment wins.
