@@ -35,6 +35,35 @@ npm run gate    # lint, typecheck, build, e2e, unit — in that order
 - [x] **V-012** — Guest-facing booking flow *(P0-12)* — *From V-011: `PlacementConfig.schedule` now comes from `loadSchedule(RESTAURANT.timezone)` (`@reserve/db/schedule`) — the booking route must read it per request, never cache a Schedule, or an hours edit stops reaching the guest flow.* — party size → date → time with unavailable times shown with their reason, E.164 phone validation, tokenized manage page sharing the same code path as the SMS keywords. *From V-008: a guest-driven change of a `booked` reservation must confirm it (or otherwise stop the sweep releasing it against the new time's deadline).* *Landed: `changeReservation` does it through the lifecycle module for any non-host source. Also here: `(reservationId, kind)` unique is now PARTIAL — `change_confirmed`/`change_failed` are per-change — and it is declared in the migration only, so `findUnique({ reservationId_kind })` no longer exists.*
 - [x] **V-013** — No-show & cover report *(P1-1)*, plus the seeded service capstone demo — 60 covers / one dinner period including the ugly cases the PRD's Success Metrics names verbatim (a change into a table that no longer fits, a change to an unavailable time, two simultaneous bookings for the last table, a STOP mid-thread, a number with two upcoming reservations, a webhook redelivery, a walk-in into a released no-show's table). Zero double-seated tables, zero stranded parties. **Confirm the ugly-case list against the PRD verbatim before building**, same discipline as Countertop's C-017.
 
+## Phase 5 — post-v1: the floor gets a table board
+
+Added after v1 closed. Spec: `prd-countertop-reserve.md` → *Addendum v1.1*.
+Two items, deliberately split so the read-only half can ship and be used
+before any new write path exists.
+
+- [ ] **V-016** — Table board *(P0-13)* — a table-major view of the current
+  service: `tableStates()` in `packages/core` alongside `availability()`,
+  four states (`free` / `occupied` / `reserved_soon` / `blocked`) forced
+  exhaustive by the compiler, combinations as their own inventory rows that
+  block their members and are blocked by them, and **every `free` carrying
+  its free-until** — a table free now but held in 40 minutes is not free for
+  a 90-minute walk-in, and a bare green dot is the defect the spec exists to
+  prevent. Reuses P0-9's 10s cursor rather than adding a second poll.
+  Hand-calculated fixtures before implementation.
+- [ ] **V-017** — Manual assignment *(P0-14)* — the host names the unit, the
+  same transaction still decides: identical advisory lock, schedule re-read
+  under the lock, and constraint, with `firstUnit(units)` becoming "this
+  unit, if it is in `units`". A unit outside the fitting set is refused with
+  a named reason, never forced. Moves are one transaction (acquire new,
+  then release old) and a failed move leaves the party where it was.
+  *Resolved at spec time: a `seated` party may be moved, and the turn window
+  carries from the original seat event rather than restarting — the new unit
+  must be free for the remainder only.* Pacing applies to assigning a future
+  reservation but not to seating someone already in the building; assert
+  both ways. Concurrency test on one unit: exactly one assignment, one clean
+  refusal. Snapshot regression: assign, move, re-assign, then assert stored
+  messages are byte-identical.
+
 ## Deferred by decision (not backlog)
 
 P1-2 through P1-8 (waitlist quoting from real data, deposits/card holds,

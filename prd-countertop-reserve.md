@@ -219,6 +219,86 @@ Measurement method: seed builds an 18-table floor plan with two legal combinatio
 
 ---
 
+## Addendum v1.1 — Table board & manual assignment (V-016)
+
+Added after v1 shipped. v1's P0 list stands as built; this is new scope, kept
+separate so "what v1 was" stays answerable.
+
+**Why it exists.** v1 allocates automatically and never shows its work.
+`fit()` computes every fitting unit and `firstUnit()` takes the first one that
+survives the constraint — the host sees the result (`· T3+T4`) and none of the
+alternatives. Two things are missing: a host cannot see *what is free right
+now*, and cannot say *put them on 12*. Real hosts do both constantly, and a
+floor view that cannot answer "what can I seat this walk-in on" is a book, not
+a floor.
+
+**What this must not become.** Manual assignment is the most dangerous
+feature in the product, because it invites exactly the check-then-write this
+project exists to avoid. A host picking a table is choosing an *input* to the
+same allocation transaction — never a bypass of it. If the board says a table
+is free and the constraint disagrees, the constraint is right.
+
+### P0-13: Table board *(the read-only half — shippable alone)*
+
+A table-major view of the current service: every unit, its state now, and how
+long that state lasts. Distinct from `/host`, which is reservation-major.
+
+- [ ] A new pure function in `packages/core` — `tableStates(plan, reservations, now, horizon)` — answering per *unit*, not per slot. `availability()` answers "when can a party of N sit"; this answers "what is this table doing". Neither may be implemented in terms of the other's output shape, but both derive occupancy from the same `HOLDS_TABLES` list in the status module
+- [ ] Four states, and the compiler must force every one to be rendered: `free` (with **free-until**, the instant the next hold starts, or null for the rest of service), `occupied` (who, since when, expected clear), `reserved_soon` (a hold starting within the horizon that has not seated), `blocked` (a combination whose member is otherwise committed)
+- [ ] **`free` is never absolute.** A table free now but held at 19:30 is not free for a 90-minute walk-in at 19:00. Every `free` carries its free-until, and the board states the usable window in minutes — a bare green dot is the defect this requirement exists to prevent
+- [ ] **Combinations are inventory lines, not a display detail.** A combination appears as its own row, and committing it puts every member table into `blocked` with the combination named. Committing a member table puts the combination into `blocked`. A combination whose member is occupied can never read `free`
+- [ ] Sections group the board, matching the floor plan's `section`
+- [ ] 10s poll, reusing the existing cursor from P0-9 — not a second polling mechanism
+- [ ] `now` is a parameter through the whole path; nothing in `packages/core` reads the clock
+- [ ] Hand-calculated fixtures before implementation: a table free with no next hold, one free-until a hold 40 minutes out, a combination blocked by one member, a member blocked by its combination, a table occupied past its expected clear (a long turn — must read `occupied`, never `free`)
+
+### P0-14: Manual assignment *(the write half)*
+
+The host names the unit; the transaction still decides.
+
+- [ ] One new host action, routed through the **same** transaction as automatic allocation — the advisory lock, the re-read of the schedule under the lock, the constraint. The only difference is that `firstUnit(units)` becomes "this unit, if it is in `units`"
+- [ ] **A host-named unit not in the engine's fitting set is refused, never forced.** The refusal names which rule said no: `too_large`, `too_small`, `unit_held`, `outside_hours`, `over_seat_cap`
+- [ ] **A move is a re-allocation inside one transaction** — acquire the new unit, then release the old, never the reverse. A move that fails leaves the party exactly where it was. This is P0-11's rule applied to a host tap rather than a guest change
+- [ ] **A move into a unit that no longer fits leaves the original intact** — the failure mode named in `CLAUDE.md`'s runtime traps, now reachable by a host in two taps
+- [ ] Concurrency: two hosts assigning the same unit produce exactly one assignment and one clean refusal, decided by the constraint. Tested under the seeded service, same shape as the existing last-table test
+- [ ] Every assignment and move is an append-only event with `actor: host`, and is undoable on the existing 5-second window
+- [ ] **Pacing does not apply to a host assignment of a party already in the building** (a walk-in or a waitlisted party), matching v1's "walk-ins skip pacing". It *does* apply to assigning a future reservation, because that is inventory planning, not seating. This asymmetry is deliberate and must be asserted in tests both ways
+- [ ] **The snapshot rule is untouched.** An assignment changes no already-sent message and re-renders no history. Regression test: assign, move, and re-assign a reservation, then assert its stored messages are byte-identical
+
+### What is deliberately out
+
+- **Drag-and-drop, and any spatial floor map.** The board is a list grouped by section. A geometric floor plan is a different data model (coordinates, shapes) and buys nothing the rules need
+- **Host-chosen turn times.** Turn stays a function of party size. Letting a host override it makes the turn window a free variable in the allocation constraint
+- **Splitting or merging parties on the board** — a party of 6 becoming two tables of 3 is a different reservation, booked as one
+- **Assigning outside service hours**, even manually. The schedule is re-read under the lock for a reason
+
+### Resolved — moving a seated party
+
+**A host may move a party that is already `seated`, and the turn window
+carries rather than restarts.** *(Resolved 2026-09-21. Do not re-open.)*
+
+It happens in real service — a party moves to a quieter table — so refusing
+it would just push hosts into a workaround. The semantics follow from the
+permission:
+
+- [ ] **The window stays anchored to the original seat event.** A party seated
+  at 19:00 on a 90-minute turn ends at 20:30 whether or not they move at
+  19:20. Their meal did not restart because the table did
+- [ ] **The new unit must be free for the remainder**, not for a fresh full
+  turn. A move at 19:20 needs the new unit free 19:20–20:30; a unit held from
+  20:00 refuses with `unit_held`
+- [ ] Restarting the turn on a move is the rejected alternative, and the
+  reason is worth keeping: it silently extends the new table's occupancy past
+  the free-until the board displayed a moment earlier, turning a correct board
+  into a lying one through a host action that looked harmless
+- [ ] **The vacated table is immediately real inventory** — bookable by the
+  next walk-in in the same session, not a flag swept later. This is the
+  `released` rule from `CLAUDE.md`'s runtime traps, reached by a new path
+- [ ] Both halves are one transaction. A refused move leaves the party seated
+  where they were, holding the table they were already on
+
+---
+
 ## Appendix A — Message templates (the texts, verbatim)
 
 Slots in `{braces}`. Segment counts assume GSM-7 (160 chars per segment, 153 when concatenated); every template is asserted ≤2 segments in tests.
