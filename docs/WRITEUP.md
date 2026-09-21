@@ -5,23 +5,91 @@
 > happen**, not reconstructed at the end.
 
 **Repo:** https://github.com/shanelabountyai/countertop-reserve (private)
-**Live demo:** _(not yet — may not be needed; see Scaling Caveats)_
+**Live demo:** _(none — the deliverable is the seeded 60-cover service: `npm run db:seed:demo`; see Scaling Caveats)_
 **Built with:** Claude Code + Next.js (App Router) · TypeScript · Postgres/Prisma · Tailwind · Vitest/Playwright + axe
-**Status:** In progress — V-002 of 13 backlog items · 2026-09-18
+**Status:** Complete — 13 of 13 backlog items · 2026-08-31 → 2026-09-20
 
 ---
 
 ## The Business Problem
 
-*(filled in as the guest booking flow and the message channel land — see the PRD's Problem Statement for the working version.)*
+A reservation nobody confirms is a table nobody sits at. The standard fix —
+call every guest the afternoon of service — costs a host an hour a day and
+reaches about half of them. The phone is also where changes go to die: a
+guest who wants 7:30 instead of 7:00 calls during service, nobody picks up,
+and they either arrive at the wrong time or not at all.
+
+Text is where the guest already is. A booking that confirms itself by reply,
+and a time or party size a guest can change *by texting back*, turns the two
+most expensive host interactions into a channel that costs nothing and works
+at 3am. Cancelling has to be the path of least resistance — that is the whole
+no-show strategy.
+
+The builder-side problem is two things the previous five projects never
+made me face. **Allocation under contention:** a table holds one party per
+turn, tables combine into larger ones, and two people book the last 7:00
+four-top in the same second. **An inbound channel that mutates state:** every
+prior project's writes came from a browser session the app controlled. Here a
+stranger with a phone can move a reservation.
 
 ## What I Built
 
-*(filled in as phases land.)*
+Thirteen items, one per session, in the PRD's phase order.
+
+**The engine** (`packages/core`, pure, no clock, no database). One
+availability function answering through two constraints — does a table or a
+legal combination *fit*, and is the 15-minute pacing bucket under its cap —
+called by the guest flow, the host's floor and every change request. One
+lifecycle module owning `booked → confirmed → seated → completed` plus
+`cancelled`, `no_show`, `released` and `waitlisted`, exporting every
+status list its readers filter by, so adding a state makes the compiler
+find the readers. Message templates with named slots, and the send policy
+that decides consent, quiet hours, STOP and the daily cap.
+
+**The allocation** (`packages/db`, ten hand-written migrations). A Postgres
+`EXCLUDE` constraint on `(table, [start, end))` overlap is what actually
+stops a double-seat; the greyed-out slot in the UI is only UX. Bookings
+race into the constraint and lose cleanly. Pacing — a cap on a *sum* across
+rows, which no constraint can express — is serialized by an advisory lock
+per bucket, the one deliberate check-then-write in the product and labelled
+as such. An append-only trigger on the event log, including for transitions
+a text message caused.
+
+**The channel.** Outbound messages are queued with delivery state
+(`queued → sent → delivered|failed`) and idempotent per reservation and
+kind. Inbound is treated as a trust boundary: the provider's signature is
+validated, the body is parsed against a five-keyword allowlist
+(confirm/cancel/change/stop/help — `CHANGE` always bounces to the tokenized
+manage link rather than parsing free-text times), and every handler is
+idempotent on the provider's message id, so a redelivered webhook causes
+exactly one transition. A cron sweep releases unconfirmed reservations on a
+deadline and dispatches the queue; quiet hours defer the *message* and never
+the inventory decision.
+
+**The surfaces.** A guest booking flow, a tokenized manage page sharing the
+same code path as the SMS keywords, a host floor view worked at arm's length
+during service, an hours/pacing editor, and a no-show and cover report in the
+restaurant's timezone.
+
+**The capstone.** A seeded 60-cover dinner service carrying all seven of the
+PRD's ugly cases verbatim — a change into a table that no longer fits, a
+change to an unavailable time, two simultaneous bookings for the last table,
+a STOP mid-thread, a number with two upcoming reservations, a webhook
+redelivery, a walk-in into a released no-show's table. It is both the demo
+and a test: 28 assertions, zero double-seated tables, zero stranded parties.
 
 ## The Screens
 
-*(filled in as phases land.)*
+| Route | Who | What it does |
+|---|---|---|
+| `/book` | Guest | Party size → date → time → details. Unavailable times stay on the grid **with their reason**; the phone number is validated by the browser and again by the server. |
+| `/m/[token]` | Guest | The manage page the `CHANGE` keyword links to. Change the time or party size, or cancel. The token is the entire authorisation — no reservation id appears in any guest URL. |
+| `/host` | Host | Tonight's book, grouped by service period. Seat / no-show / cancel in one tap with a 5-second undo, walk-ins and a waitlist with quoted ranges, tags styled by kind, a failed confirmation text shown on its row. ≥48px targets, axe-clean, 10s poll. |
+| `/host/hours` | Manager | Weekly service periods, per-date overrides, blackouts, pacing caps and last seating. An edit that would strand a booked party is *shown*, not saved, until forced. |
+| `/host/report` | Manager | Covers, no-shows, releases and waitlist conversion for a date range, in the restaurant's timezone. |
+| `/host/login` | Host | One shared passcode behind a digest cookie. Not in the PRD — added because the floor shows guest names and can cancel tables. |
+| `/api/sms/inbound` | Carrier | The webhook. Signature, allowlist, idempotency key. |
+| `/api/cron/sweep` | Scheduler | Deadline releases, reminders, and queue dispatch. |
 
 ## How It's Built
 
@@ -280,16 +348,141 @@ first project's own record of it.
 
 ## Skills Learned / Functions Unlocked
 
-*(filled in as phases land.)*
+- **An exclusion constraint, and knowing when a unique constraint is a
+  lie.** The PRD asked for "a unique constraint on (table, turn window)."
+  That phrase is wrong, and it is wrong in a way that reads as correct: with
+  75/90/120-minute turns, a 7:00 and a 7:30 booking on one table are two
+  different windows and both pass. `EXCLUDE USING gist (tableId WITH =,
+  during WITH &&)` over a `tstzrange` is the real mechanism, and it is the
+  single most valuable thing this project taught me.
+- **Which invariants a database *can* hold, and which it can't.** Overlap is
+  a constraint. A cap on a sum across rows is not — no amount of wanting
+  makes it one. That is why pacing is an advisory lock and says so in the
+  code, instead of pretending to be enforced.
+- **Treating an inbound webhook as a trust boundary.** Signature first, then
+  an allowlist rather than a parser, then an idempotency key checked *before
+  any state transition* rather than before any send. Free-text time parsing
+  was declared out of scope on purpose: `CHANGE` bounces to a tokenized link,
+  which is both safer and less code.
+- **Separating an inventory decision from its notification.** Quiet hours
+  defer the text; the table frees at the deadline regardless. Tangling those
+  two is the kind of thing that only bites the first time someone books at
+  2am, which is to say in production.
+- **GSM-7 versus UCS-2, the hard way.** Newer ICU emits U+202F before "PM".
+  One character outside GSM-7 turns a whole message into UCS-2, where a
+  segment holds 70 characters instead of 160 — a confirmation silently
+  becoming three segments instead of two, with nothing visibly different.
+- **Mutation testing as a habit, not a tool.** Three of this project's
+  defects were found by deliberately breaking the code before commit and
+  watching the suite stay green. Two of them (V-002, V-006) were fixtures
+  that could not fail; one (V-007) was a rollback path that 29 refusal tests
+  all managed to miss.
+- **Running CI's drift check locally before committing.** Both V-011 and
+  V-012's migration defects were caught this way. `prisma migrate diff`
+  cannot represent a partial index or a database-side default that the
+  schema mints client-side — so the schema and the migration have to agree
+  about *who* generates a value, and a partial index can only be declared in
+  the migration.
+- **A production-build e2e sweep as a real check, not ceremony.** The
+  `'use server'` export rule (V-012) is clean under both lint and typecheck
+  and fails only at build. That is the argument for the build being its own
+  gate step.
 
 ## The Hardest Bug
 
-*(reserved for the end.)*
+**V-012: a fixed future date in an e2e spec outlived the page's own
+horizon.** Every spec that went through the booking UI timed out, and each
+one reported the same thing — it could not find the link to the next step.
+The link was the symptom. The cause was three steps upstream: the spec used
+`2027-03-05`, copied from `hours.spec.ts`, where it is perfectly fine
+because that spec writes rows straight to the database and never touches the
+form. The booking page expresses its 60-day horizon as a `max` attribute on
+the date input, so Chromium silently refused to submit the day form. No time
+was ever requested, so no time grid rendered, so the link the assertion
+waited on never existed.
+
+What made it hard is that nothing in the failure pointed at the date. The
+browser's refusal to submit an out-of-range input produces no error, no
+console message and no network request — it produces *nothing*, which is
+indistinguishable from a page that rendered and lacked a link. The error
+named the last thing that was missing rather than the first thing that went
+wrong, and I spent the first pass looking at the time grid, which was
+innocent.
+
+Two things settled it. Reading the whole Playwright failure snapshot rather
+than the line the error pointed at — the snapshot showed the page still
+sitting on the day step, which the error message never said. And noticing the
+date was a *literal*, copied from a spec with a different relationship to the
+UI. The fix is that the spec now reads `today + 30 days` from Postgres in the
+restaurant's timezone, which is the only way for a test's date to stay inside
+a horizon that moves.
+
+The lesson generalises past this bug: **a copied fixture carries the
+assumptions of the spec it came from**, and those assumptions are invisible
+at the copy site. `2027-03-05` is correct in `hours.spec.ts` and wrong in
+`book.spec.ts` for a reason that appears in neither file.
+
+*(Runner-up, and arguably the more valuable find: V-007's rollback path,
+where all 29 change-refusal tests refused in the engine and none of them
+ever reached the constraint. Deleting the savepoint left every one of them
+green. It was caught by mutation rather than by debugging, which is why it
+is not the hardest — the method found it, not me.)*
 
 ## What I'd Do Differently
 
-*(reserved for the end.)*
+- **Send the confirmation outside the transaction that claims it.** V-006
+  queues and sends inside the booking's transaction, so the carrier call
+  holds a row lock for a network round trip. With a mock that is invisible;
+  with a real carrier it is the first thing that would hurt. The shape I'd
+  start from now is the one V-012 arrived at for change texts — claim,
+  commit, then send from a `sending` state.
+- **Give the capstone fixture explicit table assignments.** The hand-
+  calculated service derives which table each party lands on from the order
+  of the `ADVANCE` list, and several ugly cases need a specific table busy at
+  a specific minute. It fails loudly when reordered, which is the right
+  failure — but it should not be possible to reorder a list and break an
+  unrelated assertion. Naming the expected table per booking would cost
+  twenty lines and remove a whole class of confusing red.
+- **Model the inbound conversation, even at v1.** "The latest inbound row
+  for a number *is* the state" is correct today because a per-number advisory
+  lock serializes it, and it will be wrong the moment a host can text a
+  guest back (P1-5). The thread table is cheap now and a migration later.
+- **Stop trusting a root `tsc --noEmit`.** V-012 lost a gate step to six real
+  errors that passed the repo-root typecheck because `apps/web` has its own
+  tsconfig with its own `strict` settings. A root invocation that checks less
+  than the gate is a false green, and I would wire the workspace typecheck
+  into the root script on day one rather than discovering it at item twelve.
+- **Decide the deploy question at kickoff, not at the end.** The PRD never
+  named a target, so the project drifted to "no deploy, probably never" by
+  default. That is a defensible answer — the seeded service demos the whole
+  product offline, and the one thing genuinely hard to show without a
+  deployment is a live carrier, which is explicitly a Non-Goal. But it should
+  have been a decision in V-001, not a shrug in V-013.
+- **Write the PRD's contradictions down as they're found.** P0-4's state
+  line allows `confirmed → released` and P0-7 releases only unconfirmed
+  reservations. Those cannot both be true. It was resolved correctly at V-004
+  (P0-7 wins; releasing a guest who replied C is the defect) but only because
+  someone happened to read both in the same session.
 
 ## By the Numbers
 
-*(reserved for the end.)*
+| | |
+|---|---|
+| **Backlog items shipped** | 13 of 13 (V-001 → V-013) |
+| **Calendar** | 2026-08-31 → 2026-09-20 · 21 days |
+| **Commits** | 31 (one per item, plus its SHA-recording follow-up) |
+| **Application code** | 5,042 lines of TypeScript/TSX |
+| **Test code** | 3,548 lines — 0.70 lines of test per line of source |
+| **Unit tests** | **623 passing**, across 15 files |
+| **End-to-end tests** | **29 passing**, against a production build, axe included |
+| **Hand-written migrations** | 9 (+ `migration_lock.toml`), none by `db push` |
+| **Database-enforced invariants** | 3 `EXCLUDE` constraints, 1 partial unique index, 1 append-only trigger, plus CHECKs on every enumerated column |
+| **Documentation** | 2,218 lines across the PRD, backlog, PROGRESS, release notes and this file |
+| **Defects recorded** | 14, of which **3 were found by mutating the code before commit**, 2 by running CI's drift check locally, and 1 at a schema review before any migration existed |
+| **Defects that survived a commit** | 0 — every one above was caught by the gate, a mutation pass, a drift check or a review |
+| **Capstone service** | 18 tables · 2 combination sets · 2 service periods · 1 blackout · 60 covers booked in advance, 88 on the book, 76 seated · all 7 PRD ugly cases · 28 assertions |
+| **Double-seated tables** | 0 |
+| **Stranded parties** | 0 |
+
+Gate at close: `npm run gate` green on all five steps — lint, typecheck,
+623 unit tests (6.4s), production build, 29 e2e (17.8s).
