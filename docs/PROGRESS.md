@@ -869,3 +869,5 @@ V-012 committed at 5871161.
   timezone rather than the server's.
 - No CSV export and no chart library — the covers table draws its two bars
   with a `div` each.
+
+V-013 committed at 6c70836.
