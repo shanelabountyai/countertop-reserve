@@ -80,6 +80,24 @@ and a test: 28 assertions, zero double-seated tables, zero stranded parties.
 
 ## The Screens
 
+Shot against the seeded 60-cover service in `docs/screenshots/`:
+[the booking grid](screenshots/2-book-times.png) (a party of 10 on a full
+night — every dinner slot refused with its reason, because the floor's two
+combinations are both taken, and the closing overhang reads *not serving*
+rather than vanishing), [the floor](screenshots/4-host-floor.png)
+(combinations as `T16+T17`, a released table, a no-show, and a failed
+reminder on its own row), [the manage page](screenshots/3-manage.png) (the
+snapshot rule visible — it shows the text as *sent and stored*, not
+re-rendered), [hours](screenshots/5-host-hours.png), and
+[the report](screenshots/6-host-report.png).
+
+Regenerate after a UI change: `npm run db:seed:demo`, start the server on
+the dev database (`npx dotenv -e .env.local -- npm run dev -w apps/web` —
+plain `npm run dev` serves the *test* database), then
+`MANAGE_TOKEN=<any booked reservation's token> STAFF_PASSCODE=$(grep
+STAFF_PASSCODE .env.local | cut -d= -f2) node docs/screenshots/capture.mjs
+docs/screenshots`.
+
 | Route | Who | What it does |
 |---|---|---|
 | `/book` | Guest | Party size → date → time → details. Unavailable times stay on the grid **with their reason**; the phone number is validated by the browser and again by the server. |

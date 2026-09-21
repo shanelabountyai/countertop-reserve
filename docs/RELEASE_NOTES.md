@@ -2,7 +2,9 @@
 
 The portfolio-facing history: one entry per backlog item, written for "walk
 me through something you built." `docs/PROGRESS.md` is the mechanical
-version of the same history.
+version of the same history. For the screens themselves, `docs/screenshots/`
+has six shots of the seeded 60-cover service, indexed in `WRITEUP.md` under
+*The Screens*.
 
 ---
 
