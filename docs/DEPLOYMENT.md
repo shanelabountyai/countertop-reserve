@@ -101,13 +101,36 @@ broken until Vercel has the new value — do the two steps back to back.
 `read -rs` keeps it out of both the transcript and `~/.zsh_history`; a
 `vercel env add` that takes it on stdin keeps it out of `ps`.
 
+**`export` is load-bearing.** `read` creates a *shell* variable; perl's
+`$ENV{}` reads the *environment*. Without the export, perl sees undef and
+`perl -pe` does not warn about it — so it substitutes an empty string and
+leaves `neondb_owner:@host` in the file. That is a silent, well-formed URL
+that fails only once it is deployed. This bit once, on 2026-09-21.
+
 ```bash
 read -rs NEWPW    # paste from Neon, nothing echoes
+export NEWPW      # REQUIRED — perl reads the environment, not the shell
 
-# 1. rewrite both strings in the local file (pooler + direct share the password)
-perl -pi -e 's{(neondb_owner:)npg_[A-Za-z0-9]+}{$1$ENV{NEWPW}}g' .env.production.local
+# 1. rewrite both strings in the local file (pooler + direct share the password).
+#    Matches an EMPTY password too, so a file left broken by a failed run is
+#    still repairable by re-running this line.
+perl -pi -e 's{(neondb_owner:)[A-Za-z0-9]*@}{$1$ENV{NEWPW}\@}g' .env.production.local
 
-# 2. replace both Vercel vars, Production and Preview
+# 2. PROVE IT BEFORE TOUCHING VERCEL. Refuses to continue on an empty or
+#    short password, then makes one real connection with it.
+python3 - <<'PY' || return 2>/dev/null || exit 1
+import re,sys
+pws=[re.match(r'^(?:DATABASE_URL|DIRECT_URL)="?postgresql://[^:]+:([^@]*)@',l).group(1)
+     for l in open('.env.production.local') if re.match(r'^(DATABASE_URL|DIRECT_URL)=',l)]
+if len(pws)!=2:          sys.exit("FAIL: expected 2 connection strings, found %d"%len(pws))
+if len(set(pws))!=1:     sys.exit("FAIL: the two strings carry different passwords")
+if len(pws[0])<8:        sys.exit("FAIL: password is empty or too short (len=%d)"%len(pws[0]))
+print("file OK — both strings, identical, len=%d"%len(pws[0]))
+PY
+psql "$(grep '^DIRECT_URL=' .env.production.local | cut -d= -f2- | tr -d '"')" \
+  -tAc "select 'CONNECTED as '||current_user" || exit 1
+
+# 3. replace both Vercel vars, Production and Preview
 for v in DATABASE_URL DIRECT_URL; do
   for e in production preview; do
     vercel env rm "$v" "$e" --yes
@@ -123,6 +146,15 @@ vercel --prod   # env changes do not reach a running deployment
 Then confirm: load the site, unlock with `DEMO_ACCESS_PASSWORD`, and open a
 page that reads the database (`/host` after the passcode). A page that renders
 but shows nothing is the tell that only one of the two strings was updated.
+
+**A `500` / "A server error occurred" on the deployed site after a rotation is
+almost always the local file, not Vercel and not Neon.** Check it before
+reading a single log line — the password length is the whole diagnosis:
+
+```bash
+grep -oE 'neondb_owner:[^@]*@' .env.production.local | awk -F'[:@]' '{print length($2)}'
+# two identical non-zero numbers = fine. Two zeros = the export was missed.
+```
 
 ## The two routes the password gate does not cover
 

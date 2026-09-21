@@ -568,6 +568,33 @@ Two test defects the review surfaced, which matter more than they look:
   confirming `npm run typecheck` failed on it — a config that silently
   matches nothing looks identical to a config that passes.
 
+- **The password-rotation recipe wrote an empty password, and nothing said
+  so.** `read -rs NEWPW` creates a *shell* variable; perl's `$ENV{NEWPW}`
+  reads the *environment*. Without an `export` between them perl sees undef,
+  and `perl -pe` does not warn on undef by default — so the substitution ran,
+  succeeded, printed nothing, and left `neondb_owner:@host` in
+  `.env.production.local`. That is a syntactically valid Postgres URL, so
+  every later step co-operated: the file looked edited, `vercel env add`
+  accepted it, the build succeeded, and the failure surfaced only as a `500`
+  on the deployed site, three steps and one irreversible Neon reset after the
+  actual mistake. The distance between cause and symptom is the whole defect.
+
+  Worse, the recipe had been written *and documented as verified* the session
+  before, against a fixture — but the fixture exercised the perl substitution
+  with the variable already exported in that shell, which is precisely the
+  condition the real run would not have. A check that cannot reproduce the
+  caller's environment is not a check.
+
+  Three fixes, and only the first is the bug: `export NEWPW`; a repair pattern
+  (`[A-Za-z0-9]*@` rather than `npg_[A-Za-z0-9]+`) so a file already wrecked
+  by the broken run is recoverable by re-running the same line; and a guard
+  that refuses to touch Vercel until the file holds two identical non-trivial
+  passwords **and** one real `psql` connection has been made with them.
+  Verified the guard by feeding it both broken states it exists to catch — an
+  empty password and two mismatched ones — and confirming a non-zero exit on
+  each, because a guard that has only ever seen a good file is indistinguish-
+  able from `true`.
+
 ## Skills Learned / Functions Unlocked
 
 - **An exclusion constraint, and knowing when a unique constraint is a
