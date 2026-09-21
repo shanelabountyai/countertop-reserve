@@ -7,7 +7,7 @@
 **Repo:** https://github.com/shanelabountyai/countertop-reserve (private)
 **Live demo:** _(none — the deliverable is the seeded 60-cover service: `npm run db:seed:demo`; see Scaling Caveats)_
 **Built with:** Claude Code + Next.js (App Router) · TypeScript · Postgres/Prisma · Tailwind · Vitest/Playwright + axe
-**Status:** Complete — 13 of 13 backlog items · 2026-08-31 → 2026-09-20
+**Status:** Complete — 13 of 13 backlog items
 
 ---
 
@@ -514,7 +514,6 @@ is not the hardest — the method found it, not me.)*
 | | |
 |---|---|
 | **Backlog items shipped** | 13 of 13 (V-001 → V-013) |
-| **Calendar** | 2026-08-31 → 2026-09-20 · 21 days |
 | **Commits** | 31 (one per item, plus its SHA-recording follow-up) |
 | **Application code** | 5,042 lines of TypeScript/TSX |
 | **Test code** | 3,548 lines — 0.70 lines of test per line of source |
