@@ -13,6 +13,34 @@
 import { outsideHours, UPCOMING, type HoursConflict, type Schedule, type ServicePeriod } from '@reserve/core';
 import { Prisma, prisma } from './index';
 
+/**
+ * The advisory-lock key that serializes SCHEDULE EDITS against ALLOCATION.
+ *
+ * `guestConfig` loaded the schedule before placement's transaction ever
+ * opened, so a booking could be decided against hours that a blackout had
+ * already removed — committed, outside service, and invisible to the edit's
+ * own stranding check, which had already run against the rows as they were.
+ * Neither side was wrong on its own; they simply had no boundary in common.
+ *
+ * Bookings take it SHARED (they only read the schedule, and must not block
+ * each other), edits take it EXCLUSIVE. Negative on purpose: the other
+ * single-key advisory lock here is a pacing bucket, which is minutes since
+ * the epoch and therefore always positive, so the two key spaces cannot
+ * collide however far out a reservation is.
+ *
+ * Lock ORDER, everywhere: schedule first, then the pacing bucket. An edit
+ * takes only this one, so there is no cycle to deadlock on.
+ */
+export const SCHEDULE_LOCK = -1;
+
+/** Read the schedule in this transaction; blocks while an edit is applying. */
+export const lockScheduleShared = (tx: Prisma.TransactionClient) =>
+  tx.$executeRaw`SELECT pg_advisory_xact_lock_shared(${SCHEDULE_LOCK}::bigint)`;
+
+/** Change the schedule in this transaction; blocks until in-flight bookings commit. */
+export const lockScheduleExclusive = (tx: Prisma.TransactionClient) =>
+  tx.$executeRaw`SELECT pg_advisory_xact_lock(${SCHEDULE_LOCK}::bigint)`;
+
 /** A stranded reservation, as the host screen names it. */
 export type StrandedRow = { id: string; guestName: string; businessDay: string; startAt: Date; partySize: number; turnMinutes: number };
 
@@ -73,6 +101,10 @@ export async function editSchedule(edit: ScheduleEdit, timezone: string, now: Da
   let conflicts: HoursConflict<StrandedRow>[] = [];
   try {
     await prisma.$transaction(async (tx) => {
+      // Before the first write: a booking already inside `fit` finishes and
+      // becomes visible to the stranding check below, and no NEW booking can
+      // be decided against the hours this edit is about to replace.
+      await lockScheduleExclusive(tx);
       await apply(tx, edit);
       const schedule = await loadSchedule(timezone, tx);
       const rows = await tx.reservation.findMany({

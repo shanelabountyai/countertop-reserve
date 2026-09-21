@@ -104,6 +104,51 @@ describe('decideInbound (P0-6)', () => {
     expect(decideInbound(confirm, [r('b'), r('c')], last('selected', { reservationId: 'a' }), NOW)).toMatchObject({ outcome: 'choose' });
   });
 
+  // The fallback that made the case above safe only because TWO were left.
+  // With one left it fired, and the guest's keyword landed on the booking
+  // they had explicitly not chosen.
+  describe('a stale selection never retargets the one reservation left', () => {
+    const chose = (id: string) => last('selected', { reservationId: id });
+
+    it.each([
+      ['X', 'cancel'],
+      ['C', 'confirm'],
+      ['CHANGE', 'change'],
+    ])('%s after the selected reservation is gone asks again instead of acting on B', (body) => {
+      // Offered a and b, picked a, a is cancelled or has started — only b is upcoming.
+      const action = decideInbound(parseReply(body), [r('b')], chose('a'), later(60_000));
+      expect(action).toEqual({ outcome: 'choose', choices: ['b'] });
+      // The thing that matters: nothing names b as a target.
+      expect(action).not.toMatchObject({ reservationId: 'b' });
+    });
+
+    it('says so plainly when nothing is left at all', () => {
+      expect(decideInbound(cancel, [], chose('a'), later(60_000))).toEqual({ outcome: 'no_reservation' });
+    });
+
+    it('still acts when the selected reservation IS still there', () => {
+      expect(decideInbound(cancel, [r('a'), r('b')], chose('a'), later(60_000))).toMatchObject({
+        outcome: 'cancelled',
+        reservationId: 'a',
+      });
+    });
+
+    // Without a prior selection there is nothing to be loyal to, so one
+    // upcoming reservation is still an unambiguous target.
+    it('leaves the no-selection single-reservation case alone', () => {
+      expect(decideInbound(cancel, [r('b')], null, NOW)).toMatchObject({ outcome: 'cancelled', reservationId: 'b' });
+    });
+
+    // A selection expires after the window; past it the guest is starting a
+    // fresh thread, so the ordinary single-reservation rule applies again.
+    it('an EXPIRED selection is not a selection, so one reservation is unambiguous again', () => {
+      expect(decideInbound(cancel, [r('b')], chose('a'), later(CHOICE_WINDOW_MS + 1))).toMatchObject({
+        outcome: 'cancelled',
+        reservationId: 'b',
+      });
+    });
+  });
+
   it('at most nine choices — the digits that can select one', () => {
     const up = Array.from({ length: 12 }, (_, i) => r(`r${i}`));
     expect(decideInbound(confirm, up, null, NOW)).toEqual({ outcome: 'choose', choices: up.slice(0, 9).map((x) => x.id) });

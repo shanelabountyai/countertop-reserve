@@ -6,7 +6,7 @@
 // /host/hours; a Schedule held across requests would leave the guest flow
 // offering times the restaurant has stopped serving (V-011).
 import { headers } from 'next/headers';
-import { zonedTimeToInstant } from '@reserve/core';
+import { isCalendarDay, zonedTimeToInstant } from '@reserve/core';
 import type { GuestConfig } from '@reserve/db/guest';
 import { loadSchedule } from '@reserve/db/schedule';
 import { RESTAURANT } from './restaurant';
@@ -37,7 +37,8 @@ export async function guestConfig(): Promise<GuestConfig> {
  */
 export const CONSENT = 'Text me about this reservation — a confirmation, a reminder, and anything that changes. Reply STOP to opt out.';
 
-export const DAY = /^\d{4}-\d{2}-\d{2}$/;
+/** Shape AND reality: 2026-09-31 is date-shaped and is not a date. */
+export const isDay = isCalendarDay;
 /** 1 through 12. Larger parties are a phone call (PRD P1-4 is the rules engine, not this). */
 export const MAX_PARTY = 12;
 
@@ -56,7 +57,7 @@ export function parseParty(text: string): number | null {
 export function parseSlot(day: string, minute: string, timezone: string): Date | null {
   // Digits explicitly: `Number('')` and `Number(' ')` are both 0, which would
   // turn "no time picked yet" into a booking form for midnight.
-  if (!DAY.test(day) || !/^\d{1,4}$/.test(minute)) return null;
+  if (!isDay(day) || !/^\d{1,4}$/.test(minute)) return null;
   const m = Number(minute);
   return m < 24 * 60 ? zonedTimeToInstant(day, m, timezone) : null;
 }

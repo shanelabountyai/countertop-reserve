@@ -5,7 +5,7 @@
 // re-derived on the client. Which buttons a row gets comes from the lifecycle
 // module's edge table (`allows`), never from a status list kept here.
 import { randomUUID } from 'node:crypto';
-import { allows, dayOf, minuteOfDay, periodAt, periodsFor, whenSlots, type Status } from '@reserve/core';
+import { allows, dayOf, isCalendarDay, minuteOfDay, periodAt, periodsFor, whenSlots, type Status } from '@reserve/core';
 import { floorCursor, loadFloor, WAITLIST_CONSENT, type FloorRow } from '@reserve/db/floor';
 import { loadSchedule } from '@reserve/db/schedule';
 import { RESTAURANT } from '@/lib/restaurant';
@@ -70,7 +70,7 @@ export default async function HostPage({ searchParams }: { searchParams: Promise
   const { day: dayParam, notice } = await searchParams;
   const now = new Date();
   const today = dayOf(now, TZ);
-  const day = dayParam && /^\d{4}-\d{2}-\d{2}$/.test(dayParam) ? dayParam : today;
+  const day = dayParam && isCalendarDay(dayParam) ? dayParam : today;
   const [rows, cursor, schedule] = await Promise.all([loadFloor(day, now), floorCursor(), loadSchedule(TZ)]);
 
   const periods = [...periodsFor(schedule, day)].sort((a, b) => a.openMinute - b.openMinute);
@@ -174,6 +174,14 @@ function Row({ r, day, now }: { r: FloorRow; day: string; now: Date }) {
           <Expiring key={r.undoUntil.getTime()} ms={r.undoUntil.getTime() - now.getTime()}>
             <Tap action={undo} id={r.id} day={day} label="Undo" className="border-2 border-neutral-900 bg-yellow-300" />
           </Expiring>
+        ) : null}
+        {/* Staff confirmation: the guest rang, or told the host at the door.
+            No new action — `move` drives every host transition, and the edge
+            booked → confirmed already lists `host`. It matters most for a
+            guest who declined texts, whose booking the sweep will never
+            auto-release, so the host is the one who marks them expected. */}
+        {allows(r.status, 'confirmed', 'host') ? (
+          <Tap action={move} id={r.id} day={day} to="confirmed" label="Confirm" className="border-2 border-neutral-800 bg-white" />
         ) : null}
         {allows(r.status, 'seated', 'host') ? (
           // The largest thing on the row (P0-9).

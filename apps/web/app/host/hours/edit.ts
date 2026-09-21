@@ -5,6 +5,7 @@
 //
 // Window and grid rules are NOT re-checked here: the migration's CHECK
 // constraints own them, and a second copy would be the one that drifts.
+import { isCalendarDay } from '@reserve/core';
 import type { ScheduleEdit } from '@reserve/db/schedule';
 
 /** Every form field, so the confirm link can carry the edit back verbatim. */
@@ -12,7 +13,7 @@ export const FIELDS = ['kind', 'scope', 'weekday', 'day', 'name', 'open', 'close
 
 export const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-const DAY = /^\d{4}-\d{2}-\d{2}$/;
+
 const TIME = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -21,6 +22,22 @@ export const minutesOf = (text: string): number | null => {
   const m = TIME.exec(text);
   return m ? Number(m[1]) * 60 + Number(m[2]) : null;
 };
+
+/** Midnight at the END of the day. Not 0 — that is midnight at the start. */
+export const MIDNIGHT_CLOSE = 24 * 60;
+
+/**
+ * A CLOSING time, which may be midnight.
+ *
+ * The migration's CHECK allows `closeMinute` up to and including 1440 and
+ * `hhmm` already renders that as "24:00", but nothing could produce it: the
+ * parser's regex stopped at 23:59 and `<input type="time">` cannot represent
+ * midnight at all, so a kitchen that closes at midnight had no way to say so
+ * and the form silently rejected the whole edit. Closing only — an opening or
+ * a last seating at "24:00" is a day with no service in it, and 00:00 already
+ * means midnight at the start of the day for those.
+ */
+export const closeMinutesOf = (text: string): number | null => (text === '24:00' ? MIDNIGHT_CLOSE : minutesOf(text));
 
 /** 1050 → "17:30". A close at midnight reads "24:00", which is what it means. */
 export const hhmm = (minute: number) => `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
@@ -33,7 +50,7 @@ export function parseEdit(get: (name: string) => string): ScheduleEdit | null {
   }
   if (kind === 'removeBlackout' || kind === 'addBlackout') {
     const day = get('day');
-    if (!DAY.test(day)) return null;
+    if (!isCalendarDay(day)) return null;
     if (kind === 'removeBlackout') return { kind, day };
     const reason = get('reason').trim().slice(0, 80);
     return { kind, day, reason: reason === '' ? null : reason };
@@ -42,7 +59,7 @@ export function parseEdit(get: (name: string) => string): ScheduleEdit | null {
 
   const name = get('name').trim().slice(0, 40);
   const openMinute = minutesOf(get('open'));
-  const closeMinute = minutesOf(get('close'));
+  const closeMinute = closeMinutesOf(get('close'));
   const lastText = get('last');
   const lastSeatingMinute = lastText === '' ? null : minutesOf(lastText);
   const pacingCap = Number(get('cap'));
@@ -57,7 +74,7 @@ export function parseEdit(get: (name: string) => string): ScheduleEdit | null {
   const where =
     scope === 'weekly' && Number.isInteger(weekday) && weekday >= 0 && weekday <= 6
       ? { weekday, day: null }
-      : scope === 'date' && DAY.test(day)
+      : scope === 'date' && isCalendarDay(day)
         ? { weekday: null, day }
         : null;
   if (!where) return null;

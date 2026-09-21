@@ -8,16 +8,18 @@
 import { runSeededService, SERVICE_DAY } from './capstone';
 import { mockProvider } from './messages';
 import { loadReport } from './report';
-import { resetDatabase } from './testing/index';
+import { resetDatabaseForDemoSeed } from './testing/index';
 import { TIMEZONE } from './capstone';
 
 const percent = (r: { count: number; of: number; rate: number | null }) =>
   r.rate === null ? 'no data' : `${Math.round(r.rate * 100)}% (${r.count} of ${r.of})`;
 
 async function main(): Promise<void> {
-  // resetDatabase refuses any host but a local one — this never runs against
-  // a deployed database by accident.
-  await resetDatabase();
+  // Refuses any host but a local one unless SEED_ALLOW_HOST names it
+  // exactly — this never runs against a deployed database by accident.
+  // Deliberately NOT the test-suite guard: wiping the demo database is the
+  // point here, and the test guard exists to stop exactly that.
+  await resetDatabaseForDemoSeed();
   const { provider, sent } = mockProvider();
   const ledger = await runSeededService(provider);
   const report = await loadReport({ from: SERVICE_DAY, to: SERVICE_DAY }, TIMEZONE);

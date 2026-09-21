@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { periodsFor, zonedTimeToInstant } from '@reserve/core';
 import { prisma } from './index';
 import { editSchedule, loadSchedule, type ScheduleEdit } from './schedule';
-import { resetDatabase } from './testing/index';
+import { placeReservation, type PlaceRequest, type PlacementConfig } from './placement';
+import { resetDatabase, seedSchedule } from './testing/index';
 
 // Friday 2026-10-02, America/Los_Angeles. `now` = noon that day.
 const DAY = '2026-10-02';
@@ -169,5 +170,106 @@ describe('editSchedule — the hours-edit diff warning (P0-10)', () => {
   it('`check` never commits, even when nothing would be stranded', async () => {
     expect(await editSchedule({ kind: 'addBlackout', day: '2026-12-25', reason: 'Christmas' }, TZ, NOW, 'check')).toEqual({ ok: true });
     expect(await prisma.blackout.count()).toBe(0);
+  });
+});
+
+
+// The schema has allowed a midnight close since the service-schedule
+// migration (`closeMinute <= 1440`), but nothing could produce one: the hours
+// parser's regex stopped at 23:59 and a native time input cannot express it,
+// so a kitchen closing at midnight had no way to say so.
+describe('a kitchen that closes at midnight', () => {
+  it('stores a period closing at minute 1440', async () => {
+    expect(await editSchedule(addPeriod({ name: 'Late', openMinute: 21 * 60, closeMinute: 24 * 60, lastSeatingMinute: 23 * 60 }), TZ, NOW)).toEqual({ ok: true });
+    const rows = await prisma.servicePeriod.findMany({ where: { name: 'Late' } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.closeMinute).toBe(1440);
+  });
+
+  it('is still refused past midnight — the CHECK constraint, as a clean refusal', async () => {
+    expect(await editSchedule(addPeriod({ name: 'Too late', openMinute: 21 * 60, closeMinute: 24 * 60 + 15 }), TZ, NOW)).toMatchObject({ ok: false, reason: 'invalid' });
+    expect(await prisma.servicePeriod.count({ where: { name: 'Too late' } })).toBe(0);
+  });
+});
+
+// `guestConfig` loads the schedule before placement's transaction opens, so a
+// booking could be decided against hours a blackout had already removed:
+// committed, outside service, and invisible to the edit's own stranding check
+// because the row did not exist when that check ran. Both sides were correct
+// in isolation; they had no boundary in common. They share one advisory lock
+// now — bookings take it shared and reload the schedule under it, edits take
+// it exclusive.
+describe('a booking and an hours edit cannot pass through each other', () => {
+  const placement = (): PlacementConfig => ({
+    schedule: { timezone: TZ, weekly: Array.from({ length: 7 }, () => [{ name: 'Dinner', openMinute: 17 * 60, closeMinute: 21 * 60, pacingCap: 40 }]), overrides: {}, blackouts: [] },
+    overSeatCap: 2,
+    restaurant: 'Firebird Kitchen',
+    manageBaseUrl: 'https://firebird.example/m',
+  });
+  const booking = (over: Partial<PlaceRequest> = {}): PlaceRequest => ({
+    idempotencyKey: `race-${(n += 1)}`,
+    day: DAY,
+    startAt: zonedTimeToInstant(DAY, 19 * 60, TZ),
+    partySize: 2,
+    guestName: 'Dana Reyes',
+    guestPhone: '+15035550100',
+    source: 'guest_web',
+    now: NOW,
+    ...over,
+  });
+
+  beforeEach(async () => {
+    await seedSchedule(placement().schedule);
+    await prisma.diningTable.createMany({ data: [{ id: 'T1', seats: 2, minParty: 1, section: 'main' }] });
+  });
+
+  // The stale snapshot the caller hands in is exactly what `guestConfig`
+  // produced before the blackout landed. The booking must not honour it.
+  it('a booking carrying pre-blackout hours is refused, not stranded', async () => {
+    const stale = placement();
+    expect(await editSchedule({ kind: 'addBlackout', day: DAY, reason: 'deep clean' }, TZ, NOW)).toEqual({ ok: true });
+
+    const res = await placeReservation(booking(), stale);
+    expect(res).toMatchObject({ ok: false, reason: 'closed' });
+    expect(await prisma.reservation.count()).toBe(0);
+  });
+
+  // Run together: whichever order they land in, the pair must agree. Either
+  // the booking is refused, or it exists and the edit reported it as stranded
+  // rather than committing over it.
+  it('run concurrently, the two always agree — never a silently stranded booking', async () => {
+    const stale = placement();
+    const [placed, edited] = await Promise.all([
+      placeReservation(booking(), stale),
+      editSchedule({ kind: 'addBlackout', day: DAY, reason: 'deep clean' }, TZ, NOW),
+    ]);
+
+    const rows = await prisma.reservation.findMany();
+    if (!placed.ok) {
+      expect(rows).toHaveLength(0);
+      return;
+    }
+    // The booking won the lock. Then the edit saw it, and either refused with
+    // it named as stranded, or the blackout never landed.
+    expect(rows).toHaveLength(1);
+    const blackouts = await prisma.blackout.findMany();
+    if (blackouts.length > 0) throw new Error('blackout committed over a live booking');
+    expect(edited).toMatchObject({ ok: false, reason: 'strands' });
+    expect(edited.ok === false && edited.reason === 'strands' && edited.conflicts.map((c) => c.row.id)).toContain(placed.reservation.id);
+  });
+
+  it('with no edit in flight the booking is taken as normal', async () => {
+    expect(await placeReservation(booking(), placement())).toMatchObject({ ok: true });
+  });
+
+  // Bookings must not serialize against EACH OTHER on the schedule lock —
+  // they take it shared. Different buckets, so no pacing lock contention either.
+  it('two bookings in different buckets still run together', async () => {
+    await prisma.diningTable.create({ data: { id: 'T2', seats: 2, minParty: 1, section: 'main' } });
+    const results = await Promise.all([
+      placeReservation(booking({ startAt: zonedTimeToInstant(DAY, 19 * 60, TZ) }), placement()),
+      placeReservation(booking({ startAt: zonedTimeToInstant(DAY, 19 * 60 + 15, TZ) }), placement()),
+    ]);
+    expect(results.every((r) => r.ok)).toBe(true);
   });
 });

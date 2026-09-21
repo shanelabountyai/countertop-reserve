@@ -4,7 +4,7 @@ import { addWalkIn, floorCursor, hostMove, loadFloor, tableReady, undoLast, WAIT
 import { prisma } from './index';
 import { mockProvider } from './messages';
 import { placeReservation, type PlaceRequest, type PlacementConfig } from './placement';
-import { resetDatabase } from './testing/index';
+import { resetDatabase, seedSchedule } from './testing/index';
 
 // Friday 2026-10-02, Los Angeles. Two two-tops. A 19:00 booking for two
 // (75 min turn → holds 19:00–20:15); the host works it through the evening.
@@ -42,6 +42,7 @@ const get = (id: string) => prisma.reservation.findUniqueOrThrow({ where: { id }
 
 beforeEach(async () => {
   await resetDatabase();
+  await seedSchedule(placement.schedule);
   await prisma.diningTable.createMany({ data: [{ id: 'T1', seats: 2, minParty: 1, section: 'main' }, { id: 'T2', seats: 2, minParty: 1, section: 'main' }] });
 });
 
@@ -203,5 +204,56 @@ describe('what the floor shows', () => {
     const rows = await loadFloor(DAY, at(18));
     expect(rows.find((x) => x.id === quiet.id)).toMatchObject({ texts: false, messages: [] });
     expect(rows.find((x) => x.id === loud.id)).toMatchObject({ texts: true, messages: [{ kind: 'confirmation', status: 'failed', failureReason: 'rate_limited' }] });
+  });
+});
+
+// `fitNow` takes no bucket lock, so two taps of one walk-in form are not
+// serialised: both could pass the pre-transaction key check and both reach
+// `create`. The loser's P2002 had no catch and escaped as an unhandled
+// rejection rather than a result — and a loser that stopped at `fitNow`
+// instead was told `no_longer_available` for a party its own twin had
+// already seated.
+describe('a double-tapped walk-in is one party, whatever the floor looks like', () => {
+  const burst = (n: number, over: Partial<WalkInRequest> = {}) =>
+    Promise.all(Array.from({ length: n }, () => walk({ idempotencyKey: 'double-tap', ...over })));
+
+  it('four simultaneous taps with one key seat exactly one party', async () => {
+    const results = await burst(4);
+    for (const r of results) expect(r).toMatchObject({ ok: true });
+    expect(new Set(results.map((r) => (r.ok ? r.reservation.id : r.reason))).size).toBe(1);
+    expect(await prisma.reservation.count()).toBe(1);
+    expect(await prisma.reservationEvent.count()).toBe(1);
+  });
+
+  it('…including when only one table is left, so the losers cannot fit', async () => {
+    await prisma.diningTable.deleteMany({ where: { id: 'T2' } });
+    const results = await burst(4);
+    for (const r of results) expect(r).toMatchObject({ ok: true, reservation: { status: 'seated' } });
+    expect(await prisma.reservation.count()).toBe(1);
+    expect(await prisma.tableHold.count()).toBe(1);
+  });
+
+  it('…and when the floor is full, so the party is waitlisted', async () => {
+    await book();
+    await book({ guestName: 'Second', startAt: at(19) });
+    const results = await burst(4, { textWhenReady: true, guestPhone: PHONE });
+    for (const r of results) expect(r).toMatchObject({ ok: true, reservation: { status: 'waitlisted' } });
+    expect(new Set(results.map((r) => (r.ok ? r.reservation.id : r.reason))).size).toBe(1);
+    expect(await prisma.reservation.count({ where: { status: 'waitlisted' } })).toBe(1);
+    const only = await prisma.reservation.findFirstOrThrow({ where: { status: 'waitlisted' } });
+    expect(only.smsConsent).toBe(WAITLIST_CONSENT);
+  });
+
+  it('a sequential retry replays rather than seating a second party', async () => {
+    const first = await walk({ idempotencyKey: 'again' });
+    const retry = await walk({ idempotencyKey: 'again' });
+    expect(retry).toMatchObject({ ok: true, replayed: true });
+    expect(first.ok && retry.ok && retry.reservation.id).toBe(first.ok && first.reservation.id);
+    expect(await prisma.reservation.count()).toBe(1);
+  });
+
+  it('a retry with a mangled body still gets the original party', async () => {
+    await walk({ idempotencyKey: 'mangled' });
+    expect(await walk({ idempotencyKey: 'mangled', guestName: '' })).toMatchObject({ ok: true, replayed: true });
   });
 });

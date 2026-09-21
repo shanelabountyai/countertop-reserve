@@ -51,28 +51,46 @@ export type SweepConfig = {
 export type SweepResult = { released: string[]; notices: number; reminders: number; sent: number };
 
 const RELEASED: Status = 'released';
-const toRow = (r: Reservation) => ({ ...r, status: parseStatus(r.status) });
+
+/**
+ * `confirmationSentAt` has no default on purpose. It is what decides whether
+ * a booking may be auto-released at all, so a caller that forgets it must
+ * fail to compile rather than quietly pick a policy.
+ */
+const toRow = (r: Reservation, confirmationSentAt: Date | null) => ({
+  ...r,
+  status: parseStatus(r.status),
+  confirmationSentAt,
+});
 
 export async function sweep(provider: MessageProvider, config: SweepConfig, now: Date): Promise<SweepResult> {
   const p = config.policy ?? DEFAULT_SWEEP;
   const within = (...leads: number[]) => plusMs(now, Math.max(...leads) * 60_000);
   const released = p.releaseLead === 0 ? [] : await releaseDue(within(p.releaseLead, p.sameDayReleaseLead), config, now, p);
   const notices = await queue('released', [RELEASED], within(p.releaseLead, p.sameDayReleaseLead), config, now, () => true);
-  const reminders = await queue('reminder', UPCOMING, within(p.reminderLead, p.lateReminderLead), config, now, (r) => shouldRemind(toRow(r), now, p));
+  const reminders = await queue('reminder', UPCOMING, within(p.reminderLead, p.lateReminderLead), config, now, (r) => shouldRemind(toRow(r, null), now, p));
   const sent = await dispatchQueued(provider, now, config);
   return { released, notices, reminders, sent: sent.length };
 }
 
 async function releaseDue(horizon: Date, config: SweepConfig, now: Date, p: SweepPolicy): Promise<string[]> {
   return prisma.$transaction(async (tx) => {
-    const candidates = await tx.$queryRaw<Reservation[]>`
-      SELECT * FROM "Reservation"
-      WHERE status = ANY(${[...UPCOMING]}::text[]) AND "startAt" > ${now} AND "startAt" <= ${horizon}
-      ORDER BY "startAt", id FOR UPDATE SKIP LOCKED`;
+    // The confirmation REQUEST's send time, joined rather than denormalised:
+    // one fact, in the messages table that already owns it, so it cannot
+    // drift from what was actually sent.
+    const candidates = await tx.$queryRaw<(Reservation & { confirmationSentAt: Date | null })[]>`
+      SELECT r.*, (
+        SELECT MIN(m."statusChangedAt") FROM "OutboundMessage" m
+        WHERE m."reservationId" = r.id AND m.kind = 'confirmation' AND m.status IN ('sent', 'delivered')
+      ) AS "confirmationSentAt"
+      FROM "Reservation" r
+      WHERE r.status = ANY(${[...UPCOMING]}::text[]) AND r."startAt" > ${now} AND r."startAt" <= ${horizon}
+      ORDER BY r."startAt", r.id FOR UPDATE SKIP LOCKED`;
     const released: string[] = [];
     for (const r of candidates) {
-      if (!shouldRelease(toRow(r), now, config.timezone, p)) continue;
-      const d = transition(toRow(r), 'released', 'system', now);
+      const row = toRow(r, r.confirmationSentAt);
+      if (!shouldRelease(row, now, config.timezone, p)) continue;
+      const d = transition(row, 'released', 'system', now);
       if (!d.ok) continue;
       await tx.reservation.update({ where: { id: r.id }, data: { status: d.to, statusChangedAt: now } });
       if (d.tables === 'release') await tx.tableHold.deleteMany({ where: { reservationId: r.id } });

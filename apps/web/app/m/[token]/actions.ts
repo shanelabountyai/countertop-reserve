@@ -1,15 +1,15 @@
 'use server';
 
-// The manage page's two writes (P0-12). Both take the token from the form and
-// nothing else that names a reservation: a guest can only ever act on the one
-// booking their link is for.
+// The manage page's three writes (P0-12). Each takes the token from the form
+// and nothing else that names a reservation: a guest can only ever act on the
+// one booking their link is for.
 //
-// Neither is a second code path. `guestChange` is `changeReservation` — the
-// same re-allocation the SMS `CHANGE` keyword bounces here for — and
-// `guestCancel` is the ONE lifecycle module with `guest` as the actor, which
-// is exactly what an inbound `X` does.
+// None of them is a second code path. `guestChange` is `changeReservation` —
+// the same re-allocation the SMS `CHANGE` keyword bounces here for — and
+// `guestCancel`/`guestConfirm` are the ONE lifecycle module with `guest` as
+// the actor, which is exactly what an inbound `X` or `C` does.
 import { redirect } from 'next/navigation';
-import { guestCancel, guestChange } from '@reserve/db/guest';
+import { guestCancel, guestChange, guestConfirm } from '@reserve/db/guest';
 import { guestConfig, parseParty, parseSlot } from '@/lib/guest';
 import { RESTAURANT } from '@/lib/restaurant';
 
@@ -41,4 +41,15 @@ export async function cancel(f: FormData): Promise<void> {
   const token = tokenOf(f);
   const result = await guestCancel(token, new Date(), await guestConfig());
   redirect(`/m/${token}?notice=${result.ok ? 'cancelled' : result.reason}`);
+}
+
+/**
+ * The guest confirms. The token is the credential, exactly as for cancel —
+ * and this is the ONLY way to confirm for a guest who declined texts, whose
+ * `C` reply does not exist because the confirmation request never went out.
+ */
+export async function confirm(f: FormData): Promise<void> {
+  const token = tokenOf(f);
+  const result = await guestConfirm(token, new Date(), await guestConfig());
+  redirect(`/m/${token}?notice=${result.ok ? 'confirmed' : result.reason}`);
 }

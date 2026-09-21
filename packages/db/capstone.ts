@@ -385,6 +385,11 @@ export async function runSeededService(provider: MessageProvider): Promise<Servi
   if (!wren.ok || wren.reservation.status !== 'waitlisted') throw new Error('seed: the second party of ten should have been waitlisted');
   ids['Wren Adeyemi'] = wren.reservation.id;
 
+  // T1 is bussed BEFORE it is given to the next party. Alvarez sat at 17:00
+  // on a 75-minute turn; clearing them at 20:50, after Okafor had been seated
+  // at the same table at 19:45, described an hour in which two parties were
+  // physically at T1 — which the capstone's occupancy assertion now catches.
+  await host('Alvarez Pena', 'completed', at(19, 40));
   await seat('Okafor Diallo', at(19, 45));
   // Maren never confirmed and never came. The unconfirmed half of the
   // report's central question.
@@ -398,8 +403,12 @@ export async function runSeededService(provider: MessageProvider): Promise<Servi
   await host('Vance Iyer', 'seated', at(20, 20));
   await host('Wren Adeyemi', 'abandoned', at(20, 25)); // gave up waiting
   await seat('Okafor Diallo (2nd)', at(20, 30));
+  // Same for T14: Quinn sat at 17:00 on a 120-minute turn and is cleared
+  // before Sun Park is seated there.
+  await host('Quinn Alaba', 'completed', at(20, 40));
   await seat('Sun Park', at(20, 45));
-  await host('Alvarez Pena', 'completed', at(20, 50));
+  // C2 (T16+T17) is bussed before the last party of ten is seated into it.
+  await host('Osei Mensah', 'completed', at(20, 55));
   await seat('Table Ten', at(21, 0));
   await tick(at(21, 0));
 

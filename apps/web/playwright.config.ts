@@ -26,7 +26,15 @@ export default defineConfig({
     command: process.env.E2E_DEV ? 'npm run dev:test' : 'npm run e2e:server',
     cwd: '../..',
     url: baseURL,
-    reuseExistingServer: !process.env.CI,
+    // NEVER reuse by default. The fixtures wipe and seed the database named
+    // by TEST_DATABASE_NAME, but an already-listening server on this port
+    // may be `npm run dev:demo` reading reserve_dev — reuse adopted it and
+    // the sweep then tested an app pointed at a different database than the
+    // one it was seeding. With reuse off, Playwright refuses to start when
+    // the port is held, which is the fail-closed answer: stop the other
+    // server. E2E_REUSE_SERVER=1 is the debugging hatch, and it is on you to
+    // confirm that server was started by `npm run e2e:server`/`dev:test`.
+    reuseExistingServer: process.env.E2E_REUSE_SERVER === '1',
     // A cold production build blows past the 120s default, which is sized
     // for a dev server's near-instant start.
     timeout: 300_000,

@@ -23,7 +23,20 @@ export const DEFAULT_SWEEP: SweepPolicy = { releaseLead: 180, sameDayReleaseLead
 /** Appendix A3: a guest who confirmed this close to the reminder doesn't get one. */
 export const RECENT_CONFIRM_MS = 6 * 3_600_000;
 
-export type SweepRow = { status: Status; businessDay: string; startAt: Date; createdAt: Date; statusChangedAt: Date };
+export type SweepRow = {
+  status: Status;
+  businessDay: string;
+  startAt: Date;
+  createdAt: Date;
+  statusChangedAt: Date;
+  /**
+   * When the confirmation REQUEST actually reached the guest, or null if it
+   * never did — no consent, no number, or a send the provider refused.
+   * Deliberately not "was queued": a queued-but-unsent text is a question
+   * nobody was asked.
+   */
+  confirmationSentAt: Date | null;
+};
 
 const before = (r: SweepRow, minutes: number) => plusMs(r.startAt, -minutes * 60_000);
 
@@ -42,8 +55,21 @@ export function releaseAt(r: SweepRow, timezone: string, p: SweepPolicy = DEFAUL
 /**
  * Past the deadline and still unconfirmed. Once the start has passed it is
  * the host's call (seat or no-show), even if a stalled sweep never got to it.
+ *
+ * A reservation we never ASKED is never released. A guest who declined texts
+ * (P0-8's consent is a checkbox, not a requirement) would otherwise be booked,
+ * never sent a confirmation request, never sent a reminder, never sent the
+ * release notice — and silently lose the table at T-3h for failing to answer
+ * a question nobody put to them. They confirm on the manage page instead, and
+ * until they do the host works the door with an unconfirmed row, which is the
+ * pre-SMS status quo and strictly better than a vanished booking.
+ *
+ * Keyed on the request having been SENT, not on current consent: a guest who
+ * confirmed by text and then sent STOP was still asked, so their deadline
+ * still stands. Opting out of texts is not opting out of the policy.
  */
 export function shouldRelease(r: SweepRow, now: Date, timezone: string, p: SweepPolicy = DEFAULT_SWEEP): boolean {
+  if (r.confirmationSentAt === null) return false;
   const at = releaseAt(r, timezone, p);
   return r.status === 'booked' && at !== null && now >= at && now < r.startAt;
 }

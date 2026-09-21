@@ -2,6 +2,10 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { Client } from 'pg';
 
+// Shared with the Vitest fixtures: a local hostname is not enough, the test
+// environment has to NAME the disposable database (TEST_DATABASE_NAME).
+import { assertDisposableTestDatabase } from '@reserve/db/testing/identity';
+
 // Service hours, overrides and blackouts (P0-10) against the production
 // build. The spec seeds the weekly periods itself rather than trusting the
 // migration's: the unit suite truncates every table, and it runs first.
@@ -13,8 +17,7 @@ const DAY = '2027-03-05';
 
 test.beforeAll(async () => {
   expect(passcode, 'STAFF_PASSCODE must be set for e2e (.env.test / CI env)').not.toBe('');
-  const host = new URL(process.env.DATABASE_URL ?? '').hostname;
-  expect(['localhost', '127.0.0.1', '::1'], 'e2e seeds only a local database').toContain(host);
+  assertDisposableTestDatabase();
   await db.connect();
 });
 
@@ -106,7 +109,7 @@ test('an added period that overlaps the weekday’s own hours is refused by the 
   await page.getByLabel('Weekday').selectOption('5');
   await page.getByLabel('Name').fill('Late');
   await page.getByLabel('Opens').fill('21:00');
-  await page.getByLabel('Closes').fill('23:00');
+  await page.getByLabel('Closes').selectOption('23:00');
   await page.getByLabel('Covers per 15 min').fill('10');
   await page.getByRole('button', { name: 'Add' }).click();
 
@@ -120,7 +123,7 @@ test('a single-date override replaces that day’s periods on the floor view', a
   await page.getByLabel('Or date').fill(DAY);
   await page.getByLabel('Name').fill('Wine dinner');
   await page.getByLabel('Opens').fill('18:00');
-  await page.getByLabel('Closes').fill('21:00');
+  await page.getByLabel('Closes').selectOption('21:00');
   await page.getByLabel('Covers per 15 min').fill('10');
   await page.getByRole('button', { name: 'Add' }).click();
   await expect(page.getByText('Hours updated.')).toBeVisible();
@@ -129,4 +132,26 @@ test('a single-date override replaces that day’s periods on the floor view', a
   await page.goto(`/host?day=${DAY}`);
   const section = page.getByRole('region', { name: 'Wine dinner' });
   await expect(section).toContainText('Override Olive');
+});
+
+// The schema has allowed a close at minute 1440 since the service-schedule
+// migration, but a native `<input type="time">` caps at 23:59, so a kitchen
+// closing at midnight could not be entered at all and the form rejected the
+// whole edit. The Closes control is a list for exactly this value.
+test('a period closing at midnight can be entered and is stored as 24:00', async ({ page }) => {
+  await signIn(page);
+  await page.getByLabel('Applies to').selectOption('weekly');
+  await page.getByLabel('Weekday').selectOption('3'); // Wednesday, untouched by the other specs
+  await page.getByLabel('Name').fill('Late supper');
+  // Dinner runs 17:00–22:00 every day here, so the late period starts where
+  // that one ends.
+  await page.getByLabel('Opens').fill('22:00');
+  await page.getByLabel('Closes').selectOption('24:00');
+  await page.getByLabel('Covers per 15 min').fill('8');
+  await page.getByRole('button', { name: 'Add' }).click();
+
+  await expect(page.getByText('Hours updated.')).toBeVisible();
+  const { rows } = await db.query(`SELECT "closeMinute" FROM "ServicePeriod" WHERE name = 'Late supper'`);
+  expect(rows).toHaveLength(1);
+  expect(rows[0].closeMinute).toBe(1440);
 });

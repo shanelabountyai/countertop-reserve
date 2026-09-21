@@ -57,11 +57,28 @@ export async function dispatchQueued(
 ): Promise<OutboundMessage[]> {
   const policy = config.send ?? DEFAULT_SEND;
   return prisma.$transaction(async (tx) => {
-    const claimed = await tx.$queryRaw<(OutboundMessage & { startAt: Date | null; optedOut: boolean })[]>`
-      SELECT m.*, r."startAt", EXISTS (SELECT 1 FROM "SmsOptOut" o WHERE o.phone = m."toPhone") AS "optedOut"
+    const claimed = await tx.$queryRaw<(OutboundMessage & { startAt: Date | null })[]>`
+      SELECT m.*, r."startAt"
       FROM "OutboundMessage" m LEFT JOIN "Reservation" r ON r.id = m."reservationId"
       WHERE m.status = 'queued'
       ORDER BY m."createdAt", m.id FOR UPDATE OF m SKIP LOCKED`;
+
+    /**
+     * Opt-out state read PER MESSAGE, immediately before its send.
+     *
+     * It used to be one EXISTS column on the claim query, evaluated once for
+     * the whole batch. `FOR UPDATE OF m` locks the messages, not `SmsOptOut`,
+     * so a STOP arriving mid-batch was not blocked and was not seen either:
+     * every message already claimed still went out, which is precisely what
+     * P0-8's "every send checks opt-out state at SEND time, not at queue
+     * time" forbids. READ COMMITTED gives each statement its own snapshot, so
+     * this sees a STOP committed moments ago.
+     *
+     * ponytail: one indexed lookup per message, and a batch is 50. Fold it
+     * back into the claim with a re-check only if that ever shows up.
+     */
+    const optedOutNow = async (phone: string) =>
+      (await tx.$queryRaw<{ one: number }[]>`SELECT 1 AS one FROM "SmsOptOut" WHERE phone = ${phone} LIMIT 1`).length > 0;
     // Accepted by the provider today (a provider id), per number.
     const counts = await tx.$queryRaw<{ toPhone: string; n: number }[]>`
       SELECT "toPhone", count(*)::int AS n FROM "OutboundMessage"
@@ -71,8 +88,9 @@ export async function dispatchQueued(
     const sentToday = new Map(counts.map((c) => [c.toPhone, c.n]));
 
     const moved: OutboundMessage[] = [];
-    for (const { startAt, optedOut, ...m } of claimed) {
+    for (const { startAt, ...m } of claimed) {
       if (moved.length >= limit) break;
+      const optedOut = await optedOutNow(m.toPhone);
       const decision = sendDecision(
         { kind: m.kind as MessageKind, isReply: m.inboundMessageId !== null, startAt, optedOut, sentToday: sentToday.get(m.toPhone) ?? 0 },
         now,
@@ -80,6 +98,16 @@ export async function dispatchQueued(
         policy,
       );
       if (decision === 'defer') continue;
+      // The carrier call happens INSIDE this transaction, which is not
+      // crash-safe exactly-once and cannot be made so from here. If the
+      // process dies after the provider accepts but before this transaction
+      // commits, the row stays `queued` and the next sweep sends it again —
+      // the guest gets the text twice. The provider id we store is what makes
+      // a duplicate detectable after the fact, not what prevents it; real
+      // exactly-once needs an idempotency key the CARRIER honours, which the
+      // mock provider (P0-5, "mock in v1") has no equivalent of. It also
+      // holds a database transaction open across network I/O, which is the
+      // scaling caveat in docs/WRITEUP.md.
       const r: SendResult = decision === 'send' ? await provider.send({ id: m.id, to: m.toPhone, body: m.body }) : { ok: false, reason: decision };
       if (r.ok) sentToday.set(m.toPhone, (sentToday.get(m.toPhone) ?? 0) + 1);
       moved.push(

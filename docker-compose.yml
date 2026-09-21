@@ -3,15 +3,27 @@
 # — and that is what .env.test/.env.local point at. This file exists for a
 # machine without one; 5436 keeps clear of Countertop's 5435 and bookable's
 # 5434.
+#
+# Bound to 127.0.0.1, not 0.0.0.0. Compose's default `"5436:5432"` publishes
+# on every interface, so on a café network this container was a Postgres any
+# machine on the LAN could reach — and it shipped with a password written in
+# a file in the repo, so the password was no obstacle. The loopback prefix is
+# what actually closes that; the password is a second lock on the same door.
+#
+# The password comes from the environment. Set POSTGRES_PASSWORD in a
+# `.env` beside this file (gitignored, like every other env file here) or
+# export it in your shell. There is no default on purpose: Compose fails with
+# "variable is not set" rather than starting a database whose password is
+# published in git history.
 services:
   db:
     image: postgres:16
     environment:
       POSTGRES_USER: reserve
-      POSTGRES_PASSWORD: reserve
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env or your shell}
       POSTGRES_DB: reserve_dev
     ports:
-      - "5436:5432"
+      - "127.0.0.1:5436:5432"
     volumes:
       - reserve-pg:/var/lib/postgresql/data
 volumes:

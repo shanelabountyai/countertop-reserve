@@ -222,7 +222,7 @@ function AddPeriodForm() {
         <Field label="Or date" name="day" type="date" />
         <Field label="Name" name="name" type="text" required />
         <Field label="Opens" name="open" type="time" step={900} required />
-        <Field label="Closes" name="close" type="time" step={900} required />
+        <CloseField />
         <Field label="Last seating" name="last" type="time" step={900} />
         <Field label="Covers per 15 min" name="cap" type="number" defaultValue="20" required />
         <button type="submit" className="min-h-12 rounded-lg bg-neutral-900 px-6 font-semibold text-white">
@@ -231,6 +231,31 @@ function AddPeriodForm() {
       </form>
       <p className="mt-1 text-neutral-700">Times sit on the 15-minute grid. Leave the last seating empty to make every turn finish by closing.</p>
     </section>
+  );
+}
+
+/**
+ * Closing time as a list, not an `<input type="time">`.
+ *
+ * A native time input cannot express midnight-as-end-of-day: browsers cap it
+ * at 23:59, so a kitchen closing at midnight could not be entered even though
+ * the schema stores it (minute 1440) and the hours table renders it. A list of
+ * the 15-minute grid can say "24:00" plainly, and it is the one field where
+ * that value means anything.
+ */
+function CloseField() {
+  const options = Array.from({ length: 96 }, (_, i) => hhmm((i + 1) * 15));
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="font-medium">Closes</span>
+      <select name="close" required defaultValue="22:00" className="min-h-12 rounded-lg border border-neutral-500 px-3">
+        {options.map((t) => (
+          <option key={t} value={t}>
+            {t === '24:00' ? '24:00 (midnight)' : t}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 

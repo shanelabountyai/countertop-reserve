@@ -32,7 +32,7 @@ import {
   type Templates,
   type TurnBands,
 } from '@reserve/core';
-import { prisma, type Prisma, type Reservation } from './index';
+import { Prisma, prisma, type Reservation } from './index';
 import { dispatchQueued, newManageToken, type MessageProvider } from './messages';
 import { firstUnit, loadPlan } from './placement';
 
@@ -237,11 +237,36 @@ export type WalkInResult =
  * skip pacing — see `walkIn` in core.
  */
 export async function addWalkIn(req: WalkInRequest, config: FloorConfig): Promise<WalkInResult> {
+  const replay = async (): Promise<WalkInResult | null> => {
+    const existing = await prisma.reservation.findUnique({ where: { idempotencyKey: req.idempotencyKey } });
+    return existing && { ok: true, reservation: existing, replayed: true };
+  };
+
+  // Same shape as `placeReservation`, and for the same reasons — this path
+  // had neither half of it. `fitNow` takes no bucket lock, so two taps of one
+  // walk-in form could both reach `create` and the loser's P2002 escaped as
+  // an unhandled rejection instead of a result; and a loser that stopped at
+  // `fitNow` instead was told `no_longer_available` for a party its own twin
+  // had already seated.
+  const first = await replay();
+  if (first) return first;
+
   const field = invalidGuestField(req) ?? (req.textWhenReady && req.guestPhone === null ? 'guestPhone' : null);
   if (field) return { ok: false, reason: 'invalid', field };
-  const existing = await prisma.reservation.findUnique({ where: { idempotencyKey: req.idempotencyKey } });
-  if (existing) return { ok: true, reservation: existing, replayed: true };
 
+  try {
+    const result = await walkInTx(req, config);
+    return result.ok ? result : ((await replay()) ?? result);
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+      const r = await replay();
+      if (r) return r;
+    }
+    throw e;
+  }
+}
+
+function walkInTx(req: WalkInRequest, config: FloorConfig): Promise<WalkInResult> {
   return prisma.$transaction(async (tx): Promise<WalkInResult> => {
     const fit = await fitNow(tx, req.partySize, config, req.now);
     if (!fit.seatable && fit.reason !== 'wait') return { ok: false, reason: fit.reason };

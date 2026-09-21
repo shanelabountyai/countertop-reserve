@@ -11,10 +11,10 @@
 // `guestCancel`, which are `changeReservation` and the ONE lifecycle module —
 // the same machinery the SMS keywords drive.
 import { notFound } from 'next/navigation';
-import { dayAvailability, loadManage } from '@reserve/db/guest';
+import { guestDayAvailability, loadManage } from '@reserve/db/guest';
 import { SlotGrid } from '../../slot-grid';
-import { cancel, change } from './actions';
-import { DAY, MAX_PARTY, clock, guestConfig, parseParty, parseSlot } from '@/lib/guest';
+import { cancel, change, confirm } from './actions';
+import { isDay, MAX_PARTY, clock, guestConfig, parseParty, parseSlot } from '@/lib/guest';
 import { RESTAURANT } from '@/lib/restaurant';
 
 export const metadata = { title: 'Your reservation — Firebird Kitchen' };
@@ -30,6 +30,8 @@ const NOTICES: Record<string, string> = {
   cancelled: 'Your reservation is cancelled.',
   no_longer_available: 'That time went while you were deciding. Your original booking is unchanged — pick another time.',
   full: 'That time is fully booked. Your original booking is unchanged.',
+  invalid_day: 'That is not a real date. Please pick again.',
+  too_far: 'We are not taking bookings that far ahead yet. Please pick a nearer date.',
   pacing: 'The kitchen is at capacity then. Your original booking is unchanged.',
   closed: 'We are not serving at that time. Your original booking is unchanged.',
   past: 'That seating has already started. Your original booking is unchanged.',
@@ -37,6 +39,7 @@ const NOTICES: Record<string, string> = {
   too_small: 'That party is smaller than we can seat. Your original booking is unchanged.',
   not_changeable: 'This reservation can no longer be changed. Please call us.',
   too_late: 'It is too close to your seating to change this online. Please call us.',
+  confirmed: 'Confirmed — thank you. We will hold your table.',
   no_change: 'Nothing to do.',
   no_edge: 'This reservation can no longer be changed here. Please call us.',
   terminal: 'This reservation is already closed.',
@@ -90,7 +93,7 @@ export default async function ManagePage({
   // what they already have, so "same night, half an hour later" is two taps.
   const picking = get('change') === '1';
   const party = parseParty(get('party')) ?? r.partySize;
-  const day = DAY.test(get('day')) ? get('day') : r.businessDay;
+  const day = isDay(get('day')) ? get('day') : r.businessDay;
   const at = picking ? parseSlot(day, get('at'), TZ) : null;
 
   return (
@@ -138,6 +141,30 @@ export default async function ManagePage({
         </p>
       ) : (
         <>
+          {r.status === 'booked' ? (
+            <section aria-labelledby="confirm" className="mt-6">
+              <h2 id="confirm" className="text-2xl font-bold">
+                Confirm it
+              </h2>
+              {/* The confirmation path for a guest who declined texts: their
+                  `C` reply cannot exist, because the request never went out.
+                  No deadline is quoted here on purpose — the sweep releases
+                  only bookings it actually asked, so quoting one to a guest
+                  we never texted would be a threat we do not carry out. */}
+              <p className="mt-1 text-neutral-700">
+                {r.texts
+                  ? 'You can confirm here instead of replying to our text.'
+                  : 'You asked us not to text you, so confirm here and we will know to expect you.'}
+              </p>
+              <form action={confirm} className="mt-2">
+                <input type="hidden" name="token" value={r.token} />
+                <button type="submit" className="min-h-12 rounded-lg border-2 border-neutral-800 bg-neutral-900 px-6 font-semibold text-white">
+                  Confirm this reservation
+                </button>
+              </form>
+            </section>
+          ) : null}
+
           <section aria-labelledby="change" className="mt-6">
             <h2 id="change" className="text-2xl font-bold">
               Change it
@@ -166,7 +193,7 @@ export default async function ManagePage({
                 </form>
                 <div className="mt-4">
                   <SlotGrid
-                    availability={await dayAvailability({ day, partySize: party, now }, config)}
+                    availability={await guestDayAvailability(r.token, { day, partySize: party, now }, config)}
                     day={day}
                     timezone={TZ}
                     href={(minute) => `/m/${r.token}?change=1&party=${party}&day=${day}&at=${minute}`}

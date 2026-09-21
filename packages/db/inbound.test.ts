@@ -4,7 +4,7 @@ import { prisma } from './index';
 import { handleInbound, parseInboundPayload, signBody, verifySignature, type InboundConfig } from './inbound';
 import { dispatchQueued, mockProvider } from './messages';
 import { changeReservation, placeReservation, type PlaceRequest, type PlacementConfig } from './placement';
-import { resetDatabase } from './testing/index';
+import { resetDatabase, seedSchedule } from './testing/index';
 
 // Friday 2026-10-02, America/Los_Angeles. Dinner 17:00–22:00, `now` = noon.
 const DAY = '2026-10-02';
@@ -50,6 +50,7 @@ const replies = () => prisma.outboundMessage.findMany({ where: { inboundMessageI
 
 beforeEach(async () => {
   await resetDatabase();
+  await seedSchedule(placement.schedule);
   await prisma.diningTable.createMany({ data: [{ id: 'T1', seats: 2, minParty: 1, section: 'main' }] });
 });
 

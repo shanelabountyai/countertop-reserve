@@ -9,25 +9,25 @@
 // lock and the exclusion constraint, and its answer is the one that counts. A
 // slot that goes on screen bookable and is refused at submit is the system
 // working, not failing.
-import { dayOf, plusMs } from '@reserve/core';
+import { dayOf, lastBookableDay } from '@reserve/core';
 import { dayAvailability } from '@reserve/db/guest';
 import { NOTE_MAX, TAG_KINDS } from '@reserve/core';
 import { book } from './actions';
 import { SlotGrid } from '../slot-grid';
-import { CONSENT, DAY, MAX_PARTY, clock, guestConfig, parseParty, parseSlot } from '@/lib/guest';
+import { CONSENT, isDay, MAX_PARTY, clock, guestConfig, parseParty, parseSlot } from '@/lib/guest';
 import { RESTAURANT } from '@/lib/restaurant';
 
 export const metadata = { title: 'Book a table — Firebird Kitchen' };
 export const dynamic = 'force-dynamic';
 
 const TZ = RESTAURANT.timezone;
-/** How far ahead a guest may book. Beyond this the floor plan is guesswork. */
-const HORIZON_DAYS = 60;
 
 /** Fixed text per code: a URL can pick one, never write one. */
 const NOTICES: Record<string, string> = {
   no_longer_available: 'That table went while you were filling this in. Please pick another time.',
   full: 'That time filled up. Please pick another.',
+  invalid_day: 'That is not a real date. Please pick again.',
+  too_far: 'We are not taking bookings that far ahead yet. Please pick a nearer date.',
   pacing: 'The kitchen is at capacity for that time. Please pick another.',
   closed: 'We are not serving at that time.',
   past: 'That seating has already started.',
@@ -58,7 +58,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
   const today = dayOf(now, TZ);
   const notice = NOTICES[get('notice')];
   const party = parseParty(get('party'));
-  const day = DAY.test(get('day')) && get('day') >= today ? get('day') : '';
+  const day = isDay(get('day')) && get('day') >= today ? get('day') : '';
   const at = party !== null && day !== '' ? parseSlot(day, get('at'), TZ) : null;
   const config = await guestConfig();
 
@@ -125,7 +125,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
               required
               defaultValue={day || today}
               min={today}
-              max={dayOf(plusMs(now, HORIZON_DAYS * 86_400_000), TZ)}
+              max={lastBookableDay(now, TZ)}
               className="min-h-12 rounded-lg border-2 border-neutral-800 px-3"
             />
             <button type="submit" className="min-h-12 rounded-lg bg-neutral-900 px-6 font-semibold text-white">

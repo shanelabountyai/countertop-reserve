@@ -7,18 +7,18 @@
 // the host's screen.
 import { randomUUID } from 'node:crypto';
 import { redirect } from 'next/navigation';
-import { dayOf, STATUSES, type Status } from '@reserve/core';
+import { dayOf, isCalendarDay, STATUSES, type Status } from '@reserve/core';
 import { addWalkIn, hostMove, tableReady, undoLast } from '@reserve/db/floor';
 import { mockProvider } from '@reserve/db/messages';
 import { RESTAURANT } from '@/lib/restaurant';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const DAY = /^\d{4}-\d{2}-\d{2}$/;
+
 
 const field = (f: FormData, name: string) => f.get(name)?.toString() ?? '';
 const back = (f: FormData, notice?: string): never => {
   const day = field(f, 'day');
-  const q = new URLSearchParams({ ...(DAY.test(day) && { day }), ...(notice && { notice }) }).toString();
+  const q = new URLSearchParams({ ...(isCalendarDay(day) && { day }), ...(notice && { notice }) }).toString();
   return redirect(q ? `/host?${q}` : '/host');
 };
 /** The row id, or back to the floor: Postgres would 500 on a bad uuid cast. */

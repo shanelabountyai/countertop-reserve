@@ -871,3 +871,67 @@ V-012 committed at 5871161.
   with a `div` each.
 
 V-013 committed at 6c70836.
+
+## V-015 — External code review, remediated
+
+Not a PRD item. A read-only review of the whole repository after the V-014
+deploy raised ten areas; nine were confirmed against the code and fixed, and
+the tenth (test hardening) turned up two defects of its own. The full defect
+record is in `docs/WRITEUP.md` → *Defects Found → From an external code review*;
+this entry is what a future session needs to not undo any of it.
+
+**Built:**
+- `db/testing/identity.ts`: the disposable-test-database rule, pure and
+  Prisma-free so the Playwright fixtures share it instead of re-deriving a
+  weaker one. `TEST_DATABASE_NAME` must NAME the database `DATABASE_URL`
+  resolves to; unset means refuse.
+- `core/time.ts` `isCalendarDay`: one predicate every edge uses in place of
+  five copies of a shape-only regex.
+- `core/availability.ts` `BOOKING_HORIZON_DAYS` / `lastBookableDay`: the
+  60-day horizon as one value the server enforces and the date input reads.
+- `db/guest.ts` `guestConfirm` + `guestDayAvailability`; the manage page's
+  third write and a Confirm button on the floor view.
+- `db/schedule.ts` `SCHEDULE_LOCK` and its two helpers: bookings take it
+  shared, edits exclusive.
+- `db/testing/index.ts` `seedSchedule`: writes a fixture's in-memory
+  `Schedule` into the tables `fit` now reads it from.
+
+**Decided:**
+- **A booking nobody asked is never auto-released.** `shouldRelease` requires
+  the confirmation request to have been SENT, joined from `OutboundMessage`
+  rather than denormalised onto the reservation — one fact, in the table that
+  already owns it. Keyed on the send and not on current consent, so a guest
+  who was texted and then sent STOP still has a deadline. This is the PRD's
+  one unanswered case: P0-8 makes consent a checkbox, and P0-7 assumed
+  everybody got the text. Operator-facing consequence: a non-SMS booking holds
+  its table until the host works the door.
+- **`fit` is the single choke point, so every new rule goes there.** Day
+  validity, `businessDay === dayOf(startAt)`, and the horizon are checked in
+  `fit` because a new booking and a guest change both pass through it — a rule
+  added anywhere else can be weaker on one path than the other.
+- **The schedule is re-read inside the transaction, not trusted from config.**
+  `config.schedule` now supplies only the timezone, which is app config and
+  not in the database. Lock order everywhere is schedule, then pacing bucket.
+- **A refusal is not final until the idempotency key is re-checked.** The
+  P2002 catch cannot cover the case where the loser's `fit` refuses before it
+  ever reaches the unique index.
+- **Notifications commit with the state change they describe.** The queued
+  `OutboundMessage` row IS the durable intent; `dispatchQueued` is the
+  retryable path. `changeReservation` takes an `onChanged` hook called inside
+  its transaction so the guest change can do the same.
+
+**Left behind:**
+- No migration was needed or written. The allocation constraint, the event-log
+  trigger and every existing CHECK are untouched.
+- Sending is still not crash-safe exactly-once — the carrier call is inside
+  the dispatch transaction. Documented in `WRITEUP.md`; the honest fix is a
+  real carrier with its own idempotency key.
+- Staff auth reviewed and deliberately unchanged: no login throttle, no
+  server-enforced expiry, authorization route-local via middleware.
+- `vitest.config.ts` included `packages/**` only, so `apps/web/**` unit tests
+  had never run — `demo-gate.test.ts` had been green by never executing since
+  V-014. Both directories are in the gate now; Playwright still owns `*.spec.ts`.
+- The capstone fixture now busses a table before reusing it (T1, T14, C2).
+  The occupancy assertion measures PHYSICAL occupancy from seat/clear events
+  and treats a party still `seated` at close as never having left, bounded to
+  its own business day.

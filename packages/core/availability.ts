@@ -7,7 +7,7 @@
 // empty day — the UI has to say something true.
 
 import { fittingUnits, largestUnitSeats, turnMinutes, DEFAULT_TURN_BANDS, type FloorPlan, type TurnBands, type Unit } from './floor-plan';
-import { minuteOfDay, weekdayOf, zonedTimeToInstant } from './time';
+import { dayOf, minuteOfDay, plusMs, weekdayOf, zonedTimeToInstant } from './time';
 
 export const SLOT_MINUTES = 15;
 
@@ -52,6 +52,23 @@ export type HeldReservation = {
 
 export type SlotReason = 'past' | 'closed' | 'full' | 'pacing';
 export type DayReason = SlotReason | 'too_large' | 'too_small';
+
+/**
+ * How far ahead a table can be booked. Lived only in the booking page's
+ * `<input max>` — a hint a client edits away — so the server took a booking
+ * for any date the weekly schedule happened to be open on. Both the new
+ * booking and the guest change now refuse past it, and the input's `max`
+ * reads from here so the two cannot drift.
+ */
+export const BOOKING_HORIZON_DAYS = 60;
+
+/**
+ * The last restaurant-calendar day bookable at `now`. Compared as DAYS, not
+ * instants: the horizon names a date, so a 22:00 slot on the last day is not
+ * "too far" merely because the sweep happens to run at 09:00.
+ */
+export const lastBookableDay = (now: Date, timezone: string): string =>
+  dayOf(plusMs(now, BOOKING_HORIZON_DAYS * 86_400_000), timezone);
 
 export type Slot = { minute: number; start: Date; period: string } & (
   | { bookable: true; units: Unit[] }

@@ -26,6 +26,11 @@ env:
   DATABASE_URL: postgresql://postgres:postgres@localhost:5432/reserve_ci
   DIRECT_URL: postgresql://postgres:postgres@localhost:5432/reserve_ci
   SHADOW_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/reserve_ci_shadow
+  # The disposable database, declared independently of DATABASE_URL. The
+  # reset guard refuses to TRUNCATE anything this does not name, so a
+  # DATABASE_URL that drifts to a real database fails closed instead of
+  # wiping it. Must match the database name above.
+  TEST_DATABASE_NAME: reserve_ci
   # A throwaway value: the e2e spec signs with it, the server verifies with it.
   SMS_WEBHOOK_SECRET: ci-only-not-a-secret
   # Same for the sweep route's bearer token.

@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { DEFAULT_TEMPLATES, segments, zonedTimeToInstant, type Schedule } from '@reserve/core';
+import { DEFAULT_TEMPLATES, dayOf, lastBookableDay, plusMs, segments, zonedTimeToInstant, type Schedule } from '@reserve/core';
 import { prisma } from './index';
 import { dispatchQueued, mockProvider, recordDelivery } from './messages';
 import { placeReservation, type PlaceRequest, type PlacementConfig } from './placement';
-import { resetDatabase } from './testing/index';
+import { resetDatabase, seedSchedule } from './testing/index';
 
 // Friday 2026-10-02, America/Los_Angeles. Dinner 17:00–21:00, `now` = noon.
 const DAY = '2026-10-02';
@@ -38,7 +38,9 @@ const request = (over: Partial<PlaceRequest> = {}): PlaceRequest => ({
   ...over,
 });
 
-async function floor(tables: [id: string, seats: number, minParty?: number][], combos: [id: string, members: string[], seats: number][] = []) {
+/** The tables AND the hours: `fit` reads both from the database now. */
+async function floor(tables: [id: string, seats: number, minParty?: number][], combos: [id: string, members: string[], seats: number][] = [], pacingCap = 40) {
+  await seedSchedule(config(pacingCap).schedule);
   await prisma.diningTable.createMany({ data: tables.map(([id, seats, minParty = 1]) => ({ id, seats, minParty, section: 'main' })) });
   for (const [id, members, seats] of combos) {
     await prisma.combination.create({
@@ -177,7 +179,8 @@ describe('the last table, contended (P0-3)', () => {
 
 describe('pacing under concurrency (P0-3 × P0-10)', () => {
   it('the bucket lock holds the cap: 5 simultaneous deuces, cap 4 covers, tables for all → exactly 2 booked', async () => {
-    await floor([['T1', 2], ['T2', 2], ['T3', 2], ['T4', 2], ['T5', 2]]);
+    // The cap lives in the database now, so the fixture has to put it there.
+    await floor([['T1', 2], ['T2', 2], ['T3', 2], ['T4', 2], ['T5', 2]], [], 4);
     const results = await Promise.all(Array.from({ length: 5 }, () => placeReservation(request(), config(4))));
     expect(results.filter((r) => r.ok)).toHaveLength(2);
     expect(results.filter((r) => !r.ok).map((r) => !r.ok && r.reason)).toEqual(['pacing', 'pacing', 'pacing']);
@@ -345,5 +348,132 @@ describe('delivery state (P0-5)', () => {
     await expect(prisma.outboundMessage.updateMany({ data: { status: 'sent' } })).rejects.toThrow(/outbound_sent_has_provider_id/);
     await expect(prisma.outboundMessage.updateMany({ data: { status: 'failed' } })).rejects.toThrow(/outbound_failed_has_reason/);
     await expect(prisma.outboundMessage.updateMany({ data: { status: 'bounced' } })).rejects.toThrow(/outbound_status_known/);
+  });
+});
+
+// A date-shaped string that names no date used to reach the database: the
+// engine's parsers normalised 2026-09-31 to October 1st while `businessDay`
+// kept the impossible original, so the row answered to one date on the floor
+// query and another by its own clock. `fit` now refuses both halves of that —
+// an unreal day, and a day that disagrees with its own instant — and it is
+// the ONE path a new booking and a guest change share.
+describe('a day must be real, and must be the day its instant falls on', () => {
+  beforeEach(() => floor([['T1', 2]]));
+
+  it.each([
+    ['a 31st that does not exist', '2026-09-31'],
+    ['February 30th', '2026-02-30'],
+    ['month 13', '2026-13-02'],
+    ['day 00', '2026-10-00'],
+  ])('refuses %s without writing anything', async (_label, day) => {
+    // The instant is a real one; only the NAMED day is impossible, which is
+    // exactly the case a shape-only regex waved through.
+    const res = await placeReservation(request({ day, startAt: at(19) }), config());
+    expect(res).toEqual({ ok: false, reason: 'invalid_day' });
+    expect(await counts()).toEqual({ reservations: 0, holds: 0, events: 0 });
+  });
+
+  it('refuses a real day that is not the day of its own startAt', async () => {
+    const res = await placeReservation(request({ day: '2026-10-03', startAt: at(19) }), config());
+    expect(res).toEqual({ ok: false, reason: 'invalid_day' });
+    expect(await counts()).toEqual({ reservations: 0, holds: 0, events: 0 });
+  });
+
+  // The floor view, the report and the blackout/override lookups all key off
+  // businessDay. A row whose businessDay disagreed with its startAt was
+  // invisible to one of them and present in the other; nothing gets in now,
+  // so both always agree.
+  it('every stored reservation round-trips: businessDay === dayOf(startAt)', async () => {
+    const res = await placeReservation(request(), config());
+    expect(res.ok).toBe(true);
+    const rows = await prisma.reservation.findMany();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.businessDay).toBe(dayOf(rows[0]!.startAt, TZ));
+  });
+
+  // A blackout is stored against a businessDay string. If an unreal day could
+  // be stored, it would sit outside every blackout by construction.
+  it('an unreal day cannot slip past a blackout on the day it would roll onto', async () => {
+    await prisma.blackout.create({ data: { day: '2026-10-01', reason: 'private event' } });
+    const oct1 = zonedTimeToInstant('2026-10-01', 19 * 60, TZ);
+    expect(await placeReservation(request({ day: '2026-10-01', startAt: oct1 }), config())).toMatchObject({ ok: false });
+    // …and the impossible spelling of the same instant is refused outright.
+    expect(await placeReservation(request({ day: '2026-09-31', startAt: oct1 }), config())).toEqual({ ok: false, reason: 'invalid_day' });
+    expect(await prisma.reservation.count()).toBe(0);
+  });
+});
+
+describe('the 60-day booking horizon is enforced by the server, not the date input', () => {
+  beforeEach(() => floor([['T1', 2]]));
+
+  it('takes the last day inside the horizon', async () => {
+    const day = lastBookableDay(NOW, TZ);
+    const res = await placeReservation(request({ day, startAt: zonedTimeToInstant(day, 19 * 60, TZ) }), config());
+    expect(res.ok).toBe(true);
+  });
+
+  it('refuses the day after it, however the request was made', async () => {
+    const day = dayOf(plusMs(NOW, 61 * 86_400_000), TZ);
+    const res = await placeReservation(request({ day, startAt: zonedTimeToInstant(day, 19 * 60, TZ) }), config());
+    expect(res).toEqual({ ok: false, reason: 'too_far' });
+    expect(await counts()).toEqual({ reservations: 0, holds: 0, events: 0 });
+  });
+
+  it('refuses a booking a year out — the case the <input max> alone never stopped', async () => {
+    const res = await placeReservation(request({ day: '2027-10-02', startAt: zonedTimeToInstant('2027-10-02', 19 * 60, TZ) }), config());
+    expect(res).toEqual({ ok: false, reason: 'too_far' });
+  });
+});
+
+// The existing concurrent double-submit test gives the burst THREE tables, so
+// no request in it ever loses the inventory race. These take the inventory
+// away: the loser's `fit` sees the winner's committed row, reports `full` or
+// `pacing`, and returns without touching the unique index — so the P2002
+// replay never fires and the client that retried a SUCCESSFUL booking was
+// told the table was gone.
+describe('a duplicate key returns the original booking even when inventory has run out', () => {
+  it('one table, four simultaneous submissions of one key: all four get the reservation', async () => {
+    await floor([['T1', 2]]);
+    const results = await Promise.all(Array.from({ length: 4 }, () => placeReservation(request({ idempotencyKey: 'burst' }), config())));
+    for (const r of results) expect(r).toMatchObject({ ok: true });
+    expect(new Set(results.map((r) => (r.ok ? r.reservation.id : r.reason))).size).toBe(1);
+    expect(await counts()).toEqual({ reservations: 1, holds: 1, events: 1 });
+    expect(await prisma.outboundMessage.count()).toBe(1);
+  });
+
+  it('a saturated pacing bucket does the same thing', async () => {
+    // Cap 2 covers per bucket and two tables: the winning deuce fills the
+    // 19:00 bucket, so the duplicate is refused for `pacing`, not `full`.
+    await floor([['T1', 2], ['T2', 2]], [], 2);
+    const results = await Promise.all(Array.from({ length: 3 }, () => placeReservation(request({ idempotencyKey: 'paced' }), config(2))));
+    for (const r of results) expect(r).toMatchObject({ ok: true });
+    expect(new Set(results.map((r) => (r.ok ? r.reservation.id : r.reason))).size).toBe(1);
+    expect(await counts()).toEqual({ reservations: 1, holds: 1, events: 1 });
+  });
+
+  it('sequentially too: a retry after the last table went to its own twin', async () => {
+    await floor([['T1', 2]]);
+    const first = await placeReservation(request({ idempotencyKey: 'again' }), config());
+    expect(first).toMatchObject({ ok: true });
+    const retry = await placeReservation(request({ idempotencyKey: 'again' }), config());
+    expect(retry).toMatchObject({ ok: true, replayed: true });
+    expect(await prisma.reservation.count()).toBe(1);
+  });
+
+  // The application-level replay is the fast path, never the guarantee: the
+  // unique index is what makes two rows with one key impossible at all.
+  it('keeps the unique index on idempotencyKey as the backstop', async () => {
+    const rows = await prisma.$queryRaw<{ indexdef: string }[]>`
+      SELECT indexdef FROM pg_indexes WHERE tablename = 'Reservation' AND indexdef ILIKE '%idempotencyKey%'`;
+    expect(rows.some((r) => /CREATE UNIQUE INDEX/i.test(r.indexdef))).toBe(true);
+  });
+
+  // A key that already booked answers with its booking whatever the retry's
+  // body says — the replay is checked before the field validation now.
+  it('a retry with a mangled body still gets the original reservation', async () => {
+    await floor([['T1', 2]]);
+    await placeReservation(request({ idempotencyKey: 'mangled' }), config());
+    const retry = await placeReservation(request({ idempotencyKey: 'mangled', guestName: '' }), config());
+    expect(retry).toMatchObject({ ok: true, replayed: true });
   });
 });

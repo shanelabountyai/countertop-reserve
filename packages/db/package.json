@@ -25,6 +25,7 @@
     "./floor": "./floor.ts",
     "./schedule": "./schedule.ts",
     "./guest": "./guest.ts",
-    "./report": "./report.ts"
+    "./report": "./report.ts",
+    "./testing/identity": "./testing/identity.ts"
   }
 }

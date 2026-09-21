@@ -2,6 +2,10 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { Client } from 'pg';
 
+// Shared with the Vitest fixtures: a local hostname is not enough, the test
+// environment has to NAME the disposable database (TEST_DATABASE_NAME).
+import { assertDisposableTestDatabase } from '@reserve/db/testing/identity';
+
 // The guest booking flow and the tokenized manage page (P0-12), against the
 // production build. No passcode: this is the surface a stranger reaches, and
 // the token in the URL is the whole of the authorisation.
@@ -22,8 +26,7 @@ let DAY = '';
 let token = '';
 
 test.beforeAll(async () => {
-  const host = new URL(process.env.DATABASE_URL ?? '').hostname;
-  expect(['localhost', '127.0.0.1', '::1'], 'e2e seeds only a local database').toContain(host);
+  assertDisposableTestDatabase();
   await db.connect();
   await db.query(`TRUNCATE TABLE "OutboundMessage", "ReservationEvent", "InboundMessage", "SmsOptOut", "TableHold", "Reservation",
     "CombinationMember", "Combination", "DiningTable" RESTART IDENTITY CASCADE`);
@@ -163,4 +166,54 @@ test('cancelling hands the table straight back to inventory', async ({ page }) =
 test('a token we could not have minted is a 404, the same as one that never existed', async ({ page }) => {
   expect((await page.goto('/m/AAAAAAAAAAAAAAAAAAAAAA'))?.status()).toBe(404);
   expect((await page.goto('/m/not-a-token'))?.status()).toBe(404);
+});
+
+// The picker and the change it feeds have to agree. `changeReservation` always
+// excluded the booking being replaced from the occupied set; the picker did
+// not, so it counted the guest's own table against them and showed 7:15 as
+// full on the one table that fits a deuce — a time the submit would have
+// granted. Through the UI, because that disagreement is only visible there.
+test('a 19:00 → 19:15 move on the only table that fits is offered, not shown as full', async ({ page }) => {
+  await pickSeven(page);
+  await page.getByLabel('Name').fill('Perez Nakamura');
+  await page.getByLabel('Mobile number').fill('+15035550124');
+  await page.getByRole('button', { name: 'Book this table' }).click();
+  await expect(page).toHaveURL(/\/m\/[\w-]{22}\?notice=booked/);
+
+  await page.getByRole('link', { name: 'Pick a different time' }).click();
+  // T1 is the only two-top and this guest is on it. Fifteen minutes later is
+  // the same table, and it must not read as someone else's.
+  await page.getByRole('link', { name: '7:15 PM' }).click();
+  await page.getByRole('button', { name: 'Move my reservation' }).click();
+  await expect(page.getByText('Your reservation has been moved.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: / at 7:15 PM$/ })).toBeVisible();
+});
+
+// A guest who declined texts has no `C` to reply to, so the manage page is
+// their only way out of `booked` — and the sweep will not auto-release a
+// booking it never asked.
+test('a guest who declined texts confirms on the page instead', async ({ page }) => {
+  await page.goto('/book');
+  await page.getByRole('link', { name: '4', exact: true }).click();
+  await page.locator('#day').fill(DAY);
+  await page.getByRole('button', { name: 'See times' }).click();
+  await page.getByRole('link', { name: '8:00 PM' }).click();
+  await page.getByLabel('Name').fill('Silent Guest');
+  await page.getByLabel('Mobile number').fill('+15035550125');
+  // The consent box is deliberately left unticked.
+  await page.getByRole('button', { name: 'Book this table' }).click();
+  await expect(page).toHaveURL(/\/m\/[\w-]{22}\?notice=booked/);
+
+  await expect(page.getByText('You are not signed up for texts about this booking.')).toBeVisible();
+  await expect(page.getByText('Booked — not yet confirmed')).toBeVisible();
+  await expect(page.getByText(/confirm here and we will know to expect you/)).toBeVisible();
+
+  await page.getByRole('button', { name: 'Confirm this reservation' }).click();
+  await expect(page.getByText('Confirmed — thank you. We will hold your table.')).toBeVisible();
+  await expect(page.getByText('Confirmed', { exact: true })).toBeVisible();
+  // Confirming is a state change, not a message: nothing was queued to a
+  // guest who asked not to be texted.
+  await expect(page.getByRole('button', { name: 'Confirm this reservation' })).toHaveCount(0);
+  const { rows } = await db.query(`SELECT count(*)::int AS n FROM "OutboundMessage" WHERE "toPhone" = '+15035550125'`);
+  expect(rows[0].n).toBe(0);
 });

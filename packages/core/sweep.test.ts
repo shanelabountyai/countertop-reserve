@@ -10,7 +10,18 @@ const at = (h: number, m = 0, day = DAY) => zonedTimeToInstant(day, h * 60 + m, 
 const START = at(19);
 const row = (over: Partial<SweepRow> = {}): SweepRow => {
   const createdAt = over.createdAt ?? at(12, 0, '2026-09-25');
-  return { status: 'booked', businessDay: DAY, startAt: START, createdAt, statusChangedAt: createdAt, ...over };
+  // Asked by default: the confirmation text goes out the moment the booking
+  // commits, so every timing case below is about the deadline and nothing
+  // else. The never-asked case is its own describe block.
+  return {
+    status: 'booked',
+    businessDay: DAY,
+    startAt: START,
+    createdAt,
+    statusChangedAt: createdAt,
+    confirmationSentAt: createdAt,
+    ...over,
+  };
 };
 const ms = (d: Date, delta: number) => plusMs(d, delta);
 
@@ -53,6 +64,34 @@ describe('shouldRelease', () => {
   it('leaves a started reservation to the host, even after a stalled sweep', () => {
     expect(shouldRelease(row(), ms(START, -1), TZ)).toBe(true);
     expect(shouldRelease(row(), START, TZ)).toBe(false);
+  });
+});
+
+// A guest who declined texts (P0-8's consent is a checkbox) was never sent
+// the confirmation request, so there is no question they failed to answer.
+// They confirm on the manage page; until then the host works an unconfirmed
+// row, which is the pre-SMS status quo — not a vanished booking.
+describe('shouldRelease: only a booking we actually asked', () => {
+  it('never releases a booking whose request was never sent', () => {
+    const unasked = row({ confirmationSentAt: null });
+    expect(shouldRelease(unasked, at(16), TZ)).toBe(false);
+    expect(shouldRelease(unasked, at(18), TZ)).toBe(false);
+    expect(shouldRelease(unasked, ms(START, -1), TZ)).toBe(false);
+  });
+
+  it('still releases the same booking once the request went out', () => {
+    expect(shouldRelease(row({ confirmationSentAt: at(12, 5, '2026-09-25') }), at(16), TZ)).toBe(true);
+  });
+
+  // The request is what counts, not the guest's current reachability: a guest
+  // who was texted and then sent STOP was asked. Opting out of texts is not
+  // opting out of the deadline.
+  it('is unaffected by a later opt-out, because the asking already happened', () => {
+    expect(shouldRelease(row({ confirmationSentAt: at(12, 5, '2026-09-25') }), at(17), TZ)).toBe(true);
+  });
+
+  it('does not change the deadline itself — only whether it bites', () => {
+    expect(releaseAt(row({ confirmationSentAt: null }), TZ)).toEqual(at(16));
   });
 });
 

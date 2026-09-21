@@ -5,11 +5,40 @@
 // platform, so no dependency. Every call names the restaurant's timezone;
 // nothing here reads the process timezone.
 
+const DAY_SHAPE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/**
+ * The parts of a REAL restaurant-calendar day, or null.
+ *
+ * Shape is not enough. `Date.UTC(2026, 8, 31)` silently normalises September
+ * 31st to October 1st and `Date.UTC(2026, 1, 30)` gives March 2nd — so a
+ * date-shaped string that names no date used to sail through every parser
+ * here and land in the database as a `businessDay` whose own `startAt` was on
+ * a different day. Round-tripping through UTC and demanding the same three
+ * numbers back is what rejects it.
+ */
+function dayParts(day: string): { y: number; m: number; d: number } | null {
+  const m = DAY_SHAPE.exec(day);
+  if (!m) return null;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const utc = new Date(Date.UTC(y, mo - 1, d));
+  if (utc.getUTCFullYear() !== y || utc.getUTCMonth() !== mo - 1 || utc.getUTCDate() !== d) return null;
+  return { y, m: mo, d };
+}
+
+/**
+ * Whether `day` is a "YYYY-MM-DD" that names a day that exists. Every edge
+ * that accepts a day string from a request checks this instead of a
+ * shape-only regex — one predicate, so a new entry point cannot invent a
+ * weaker rule.
+ */
+export const isCalendarDay = (day: string): boolean => dayParts(day) !== null;
+
 /** 0 = Sunday for a "YYYY-MM-DD" restaurant-calendar day. Calendar → calendar, no instant involved. */
 export function weekdayOf(day: string): number {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
-  if (!m) throw new Error(`Malformed day: ${day}`);
-  return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))).getUTCDay();
+  const p = dayParts(day);
+  if (!p) throw new Error(`Malformed day: ${day}`);
+  return new Date(Date.UTC(p.y, p.m - 1, p.d)).getUTCDay();
 }
 
 /** The restaurant-calendar "YYYY-MM-DD" an instant falls on — the instant → calendar direction. */
@@ -49,9 +78,9 @@ function offsetMinutesAt(instant: Date, timezone: string): number {
  * the transition date if a service period ever spans 1–3am.
  */
 export function zonedTimeToInstant(day: string, minuteOfDay: number, timezone: string): Date {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
-  if (!m) throw new Error(`Malformed day: ${day}`);
-  const naiveMs = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) + minuteOfDay * 60_000;
+  const p = dayParts(day);
+  if (!p) throw new Error(`Malformed day: ${day}`);
+  const naiveMs = Date.UTC(p.y, p.m - 1, p.d) + minuteOfDay * 60_000;
   // The `new Date(<number>)` calls below are epoch ms already resolved against
   // the RESTAURANT's timezone — the local → instant exception, not a parse.
   // eslint-disable-next-line no-restricted-syntax

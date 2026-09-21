@@ -8,6 +8,14 @@ const TOKEN = process.env.MANAGE_TOKEN;
 
 mkdirSync(OUT, { recursive: true });
 
+/**
+ * A manage token IS the credential — anyone holding one can change or cancel
+ * that booking. This script logged the full URL of every shot, so `/m/<token>`
+ * went to stdout and from there into CI logs and terminal scrollback.
+ * Screenshot runs are exactly the thing people paste into a chat.
+ */
+const redact = (url) => url.replace(/\/m\/[\w-]+/g, '/m/<token>');
+
 const shots = [
   { name: '1-book-party', url: '/book' },
   { name: '2-book-times', url: '/book?party=10&day=2026-10-02' },
@@ -33,7 +41,7 @@ for (const s of shots) {
   // The dev-server badge is not part of the product.
   await page.addStyleTag({ content: 'nextjs-portal{display:none!important}' });
   await page.screenshot({ path: `${OUT}/${s.name}.png`, fullPage: true });
-  console.log(`${s.name}  ${page.url()}`);
+  console.log(`${s.name}  ${redact(page.url())}`);
 }
 
 await browser.close();

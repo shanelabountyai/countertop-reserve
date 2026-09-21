@@ -122,6 +122,45 @@ first project's own record of it.
 
 ## Scaling Caveats and Deliberate Simplifications
 
+- **Sending is not crash-safe exactly-once, and cannot be made so from
+  here.** `dispatchQueued` calls the carrier INSIDE its database transaction.
+  If the process dies after the provider accepts a message but before the
+  transaction commits, the row stays `queued` and the next sweep sends it
+  again — the guest gets the text twice. The stored provider id makes a
+  duplicate *detectable afterwards*; it is not what prevents one. Real
+  exactly-once needs an idempotency key the carrier itself honours, and the
+  mock provider (P0-5 is explicit that v1 mocks the carrier) has no
+  equivalent. It also holds a transaction open across network I/O, which is
+  the part that will bite first at volume. Documented rather than fixed,
+  because every honest fix is a real carrier integration.
+- **The e2e specs share state in one chain, and CI retries them.**
+  `book.spec.ts` books, changes, then cancels one reservation across separate
+  `test()` blocks — deliberate, because that is the journey, and Playwright
+  runs the file serially. The cost is that a CI retry (`retries: 1`) re-runs a
+  single failed test against a database the earlier tests already moved, so a
+  retry can pass or fail for reasons unrelated to the original failure.
+  Reviewed and kept: the chain is what makes the specs readable, and the
+  alternative is re-seeding per test, which loses the "immediately real
+  inventory" assertions that depend on what the previous step did. Worth
+  knowing when a CI-only flake appears. `hours.spec.ts` also pins a fixed
+  future date (2027-03-05) so `startAt >= now` holds; it will need moving
+  before then, and will fail loudly rather than silently when it does.
+- **Staff auth is one shared passcode, with no throttling and no
+  server-enforced expiry.** Reviewed and deliberately left as is for this
+  scope, but naming what that means: the cookie is a salted digest of
+  `STAFF_PASSCODE`, compared in constant time, so it carries no authority of
+  its own and rotating the passcode revokes every session at once. What is
+  missing is a rate limit on the login form — nothing slows an online guess
+  against a six-character passcode — and any expiry the server enforces,
+  since the 30-day `Max-Age` is a cookie attribute the client could simply
+  keep. Authorization is also route-local: the middleware gates `/host/*`,
+  and the server actions behind it re-check nothing, so they rely entirely on
+  that one check. That is sound as long as every host action stays under
+  `/host` and the middleware matcher keeps covering it — a coupling worth
+  knowing about rather than a defect today. Per-host accounts, a login
+  throttle and server-side sessions are the upgrade, and they are a project,
+  not a patch.
+
 - **The report tallies in TypeScript, not SQL** (V-013): one read of every
   reservation in the range, then a pass over it in memory. Right for one
   restaurant's night and it keeps the restaurant's timezone out of Postgres.
@@ -250,6 +289,124 @@ first project's own record of it.
   by constraint.
 
 ## Defects Found
+
+### From an external code review (2026-09-21)
+
+A read-only review of the whole repository, after the deploy. Nine findings
+held up under independent verification; each is written here as the defect it
+was, not as the patch.
+
+- **A booking nobody asked was released anyway.** Consent to texts is a
+  checkbox (P0-8), not a requirement — so a guest could book without it, never
+  be sent a confirmation request, never be sent a reminder, and be
+  auto-released at T-3h for failing to answer a question that was never put to
+  them. The release notice could not reach them either. The manage page had no
+  confirm button and neither did the floor view, so *no* path to `confirmed`
+  existed for that guest: the only one was the `C` reply to a text they had
+  declined. Two fixes, and the second is the interesting one. `shouldRelease`
+  now requires the confirmation request to have actually been **sent** — keyed
+  on the send, not on current consent, so a guest who was texted and then sent
+  STOP still has a deadline. And both confirm paths exist now: a token-
+  authorised button on the manage page, and a staff button on the floor that
+  needed no new action at all, because `move` already drives every host
+  transition and the `booked → confirmed` edge already listed `host`.
+
+- **A date-shaped string that names no date reached the database.**
+  `Date.UTC(2026, 8, 31)` is October 1st, silently — so `2026-09-31` parsed to
+  a real instant while `businessDay` kept the impossible original. The row
+  then answered to one date on the floor query (which keys off `businessDay`)
+  and another by its own clock. Every entry point validated with the same
+  shape-only regex, five copies of it. The fix is one predicate
+  (`isCalendarDay`, a round-trip through `Date.UTC` demanding the same three
+  numbers back) that every edge now shares, plus the invariant the schema
+  never stated: `fit` refuses unless the day a reservation NAMES is the day
+  its instant FALLS on.
+
+- **The 60-day booking horizon was an `<input max>` and nothing else.** A
+  client editing the form could book 2027. Now enforced in `fit`, which is the
+  one path a new booking and a guest change both take, and compared as *days*
+  so a 22:00 slot on the last day is not "too far" because the clock says
+  09:00.
+
+- **An expired SMS selection retargeted the wrong reservation.** Offered A and
+  B, the guest picks A; A is then cancelled or starts; the guest texts `X`.
+  The handler fell back to "the only one left" and cancelled **B** — the one
+  booking they had explicitly not chosen. Having chosen once is exactly what
+  makes the guess unacceptable. A stale selection now asks again.
+
+- **A booking and an hours edit could pass through each other.**
+  `guestConfig` loaded the schedule before placement's transaction opened, so
+  a booking could be decided against hours a blackout had already removed:
+  committed, outside service, and invisible to the edit's own stranding check
+  because the row did not exist when that check ran. Neither side was wrong
+  alone; they had no boundary in common. They share one advisory lock now —
+  bookings take it shared and reload the schedule under it, edits take it
+  exclusive — with a fixed lock order (schedule, then pacing bucket) so there
+  is no cycle to deadlock on.
+
+- **The change picker counted the booking it was replacing.** `changeReservation`
+  had always excluded the reservation being replaced from the occupied set;
+  the picker that fed it had not. So a guest moving 19:00 → 19:15 on the only
+  table that fits them was shown `full` by the page and would have been
+  granted by the engine. The exclusion is derived from the manage token, never
+  from a parameter — a guest cannot ask to have someone else's reservation
+  ignored.
+
+- **A retry of a successful booking was told the table was gone.** Two
+  requests with one idempotency key both find nothing on the first replay
+  check. The bucket lock serialises them; the winner takes the last table; the
+  loser's `fit` reads the winner's committed row, reports `full`, and returns
+  **without ever touching the unique index** — so the P2002 catch that exists
+  for exactly this never fires. A refusal is no longer final until the key has
+  been checked again. `addWalkIn` had neither half of the protection: no catch
+  at all, so under a double-tapped form the loser's P2002 escaped as an
+  unhandled rejection rather than a result.
+
+- **A committed cancel could lose the text that said so.** `guestChange`,
+  `guestCancel` and `guestConfirm` committed state and *then* queued their
+  notification. A crash in between left the guest cancelled and the message
+  gone, with nothing recording that one had been owed. `placeReservation` had
+  always queued the confirmation inside its transaction — this is the same
+  rule applied to the three writes that were missing it. The queued row is the
+  durable intent; `dispatchQueued` is the retryable path.
+
+- **The webhook's size cap protected nothing.** `req.text()` buffers the whole
+  body and only then lets you measure it, and the pre-check read
+  `Content-Length` — absent on a chunked request, so `Number(null ?? 0)` is 0
+  and the check passed. It also counted UTF-16 code units against a *byte*
+  cap. Replaced with a bounded read that counts as it goes and cancels the
+  stream at the limit.
+
+Three smaller ones from the same review: `docker-compose.yml` published
+Postgres on every interface with a password committed to the repo (now
+loopback-only, password from the environment with no default); the screenshot
+script printed manage URLs to stdout, and a manage token *is* the credential
+(now redacted); and the hours editor could not express a midnight close even
+though the schema has always allowed minute 1440 and the table renders it —
+a native `<input type="time">` caps at 23:59, so the Closes control is a list.
+
+Two test defects the review surfaced, which matter more than they look:
+
+- **`vitest.config.ts` included `packages/**` only.** `apps/web/lib/demo-gate.test.ts`
+  had existed since the deploy item and had never once run. Fifteen assertions
+  about the password gate that guards the public demo, green by never
+  executing. The gate now includes `apps/web/**`.
+
+- **The capstone's occupancy assertion could not catch the thing it was for.**
+  It ended every party at `min(scheduled turn end, cleared)`, so a party that
+  sat down and was never cleared counted as having left when their turn was
+  up. A table physically occupied past its turn is what an over-running party
+  *is*, and seating someone else into it is the double-seating the test
+  exists to catch. Rewritten against actual seat/clear events, and it then
+  failed — correctly. The seeded service was giving three tables to new
+  parties before the host had cleared them: T1 at 19:45 while Alvarez Pena
+  sat there until 20:50, T14 at 20:45 under Quinn Alaba, and the C2
+  combination at 21:00 under a walk-in of ten. The fixture now busses a table
+  before it reuses it. A fixture that cannot fail is the same defect class as
+  V-002, two items apart.
+
+### Found while building
+
 
 - **V-013: the report would have claimed 100% waitlist conversion on a night
   half the waiting room walked out.** Covers deliberately exclude

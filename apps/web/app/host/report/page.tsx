@@ -4,7 +4,7 @@
 // Every number on this page comes from `loadReport`, which is `report` in
 // @reserve/core over rows read once. Nothing is re-derived here — a second
 // tally in a template is a second source of truth.
-import { dayOf, LEAD_BANDS, type Rate } from '@reserve/core';
+import { dayOf, isCalendarDay, LEAD_BANDS, type Rate } from '@reserve/core';
 import { loadReport } from '@reserve/db/report';
 import { RESTAURANT } from '@/lib/restaurant';
 import { hhmm } from '../hours/edit';
@@ -13,7 +13,7 @@ export const metadata = { title: 'Report — Firebird Kitchen' };
 export const dynamic = 'force-dynamic';
 
 const TZ = RESTAURANT.timezone;
-const DAY = /^\d{4}-\d{2}-\d{2}$/;
+
 
 /** A rate with nothing in its denominator is shown as such, never as 0%. */
 function Percent({ rate }: { rate: Rate }) {
@@ -36,7 +36,7 @@ export default async function ReportPage({ searchParams }: { searchParams: Promi
     const v = params[name];
     const s = (Array.isArray(v) ? v[0] : v) ?? '';
     // A malformed day in the URL falls back to today rather than reaching the query.
-    return DAY.test(s) ? s : '';
+    return isCalendarDay(s) ? s : '';
   };
   const today = dayOf(new Date(), TZ);
   const from = get('from') || today;

@@ -18,10 +18,13 @@
 import {
   availability,
   confirmationBody,
+  dayOf,
   DEFAULT_TEMPLATES,
   HOLDS_TABLES,
   invalidGuestField,
+  isCalendarDay,
   isUpcoming,
+  lastBookableDay,
   parseStatus,
   plusMs,
   transition,
@@ -37,6 +40,7 @@ import {
 } from '@reserve/core';
 import { Prisma, prisma, type Reservation } from './index';
 import { newManageToken } from './messages';
+import { loadSchedule, lockScheduleShared } from './schedule';
 
 /** Restaurant config for a placement. `schedule` comes from `loadSchedule` (V-011). */
 export type PlacementConfig = {
@@ -69,23 +73,61 @@ export type Placement =
   | { ok: true; reservation: Reservation; replayed: boolean }
   | { ok: false; reason: 'invalid'; field: InvalidField }
   /** `no_longer_available`: every fitting unit was taken under the constraint. */
-  | { ok: false; reason: DayReason | 'no_longer_available' };
+  | { ok: false; reason: DayReason | 'no_longer_available' | 'invalid_day' | 'too_far' };
 
 const NO_OVERLAP = /table_hold_no_overlap/;
+/** Postgres `exclusion_violation`. */
+const EXCLUSION_VIOLATION = '23P01';
+
+/**
+ * Whether `e` is the table-hold exclusion constraint refusing an overlap —
+ * the ONE error `firstUnit` may swallow.
+ *
+ * Structured first: Prisma surfaces the driver's SQLSTATE in `meta.code` for
+ * a known request error, and that is a fact about the database rather than a
+ * string that changes with a Postgres or Prisma version. `String(e)` matching
+ * stays as the fallback, because a raw `createMany` can still arrive as an
+ * unknown request error carrying only the message — but it is no longer the
+ * only thing standing between a real error and being silently ignored.
+ */
+function isTableHoldOverlap(e: unknown): boolean {
+  if (e instanceof Prisma.PrismaClientKnownRequestError) {
+    const meta = e.meta as { code?: unknown; constraint?: unknown } | undefined;
+    if (typeof meta?.code === 'string' && meta.code !== EXCLUSION_VIOLATION) return false;
+    if (typeof meta?.constraint === 'string') return NO_OVERLAP.test(meta.constraint);
+  }
+  return NO_OVERLAP.test(String(e));
+}
 
 export async function placeReservation(req: PlaceRequest, config: PlacementConfig): Promise<Placement> {
-  const field = invalidGuestField(req);
-  if (field) return { ok: false, reason: 'invalid', field };
-
+  // ponytail: a replay returns the stored body without comparing the request
+  // to it. Compare fields if a client ever reuses keys across different bookings.
   const replay = async (): Promise<Placement | null> => {
     const existing = await prisma.reservation.findUnique({ where: { idempotencyKey: req.idempotencyKey } });
     return existing && { ok: true, reservation: existing, replayed: true };
   };
 
+  // Before validation, not after: a key that already booked a table answers
+  // with that table whatever the retry's body looks like.
+  const first = await replay();
+  if (first) return first;
+
+  const field = invalidGuestField(req);
+  if (field) return { ok: false, reason: 'invalid', field };
+
   try {
-    // ponytail: a replay returns the stored body without comparing the request
-    // to it. Compare fields if a client ever reuses keys across different bookings.
-    return (await replay()) ?? (await prisma.$transaction((tx) => allocate(tx, req, config), { maxWait: 10_000, timeout: 10_000 }));
+    const result = await prisma.$transaction((tx) => allocate(tx, req, config), { maxWait: 10_000, timeout: 10_000 });
+    // A refusal is not final until the key has been checked AGAIN.
+    //
+    // Two requests carrying the same key both found nothing on the first
+    // `replay()`. The bucket lock then serialises them: the winner takes the
+    // last table and commits, and the loser's `fit` — reading the winner's
+    // committed row — reports `full` and returns WITHOUT ever touching the
+    // unique index. So the P2002 path below never fires, and a client
+    // retrying a request that succeeded was told its table was gone. The
+    // unique constraint stays as the backstop for the case where both get
+    // far enough to insert; this covers the case where the loser never does.
+    return result.ok ? result : ((await replay()) ?? result);
   } catch (e) {
     // A concurrent double-submit: the other request committed the key first.
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
@@ -107,6 +149,33 @@ async function fit(
   config: PlacementConfig,
   except?: string,
 ) {
+  // Two facts about the request itself, before any inventory is read. Both
+  // entry points — a new booking and a guest change — come through here, so
+  // neither can be given a weaker rule than the other.
+  //
+  // `day` and `startAt` arrive as separate fields and used to be stored as
+  // separate fields, unchecked against each other: a date-shaped string that
+  // names no day (2026-09-31) normalised to October 1st on the way to an
+  // instant while `businessDay` kept the impossible original, and the row
+  // then showed up on one date by the floor's query and another by its own
+  // clock. The day a reservation NAMES must be the day its instant FALLS on.
+  const tz = config.schedule.timezone;
+  if (!isCalendarDay(q.day) || dayOf(q.startAt, tz) !== q.day) return { ok: false as const, reason: 'invalid_day' as const };
+  if (q.day > lastBookableDay(q.now, tz)) return { ok: false as const, reason: 'too_far' as const };
+
+  // Locks in a fixed order — schedule, then pacing bucket — so two bookings
+  // can never hold them in opposite orders and deadlock.
+  //
+  // The schedule is re-read HERE, inside the transaction and under the lock,
+  // rather than trusted from `config`. The caller loaded that snapshot before
+  // this transaction opened: a blackout applied in between would leave this
+  // booking decided against hours that no longer exist, committed outside
+  // service, and missed by the edit's own stranding check because the row did
+  // not exist yet when it ran. `config.schedule` keeps only the timezone,
+  // which is app config and not in the database at all.
+  await lockScheduleShared(tx);
+  const schedule = await loadSchedule(tz, tx);
+
   // The bucket IS the slot's start instant (slots sit on the 15-minute grid).
   // Single-key form; the inbound handler's per-number locks use the two-key space.
   const bucket = q.startAt.getTime() / 60_000;
@@ -122,7 +191,7 @@ async function fit(
     day: q.day,
     partySize: q.partySize,
     plan,
-    schedule: config.schedule,
+    schedule,
     reservations: held.map((r) => ({ ...r, start: r.startAt })),
     now: q.now,
     turnBands: bands,
@@ -151,7 +220,7 @@ export async function firstUnit<T>(tx: Prisma.TransactionClient, units: readonly
     try {
       return await write([...unit.tableIds]);
     } catch (e) {
-      if (!NO_OVERLAP.test(String(e))) throw e;
+      if (!isTableHoldOverlap(e)) throw e;
       await tx.$executeRaw`ROLLBACK TO SAVEPOINT unit`;
     }
   }
@@ -224,7 +293,7 @@ export type Change =
   /** `changed: false` — the request asked for the time and party it already has; nothing was written. */
   | { ok: true; reservation: Reservation; changed: boolean; was: { startAt: Date; partySize: number } }
   /** `not_changeable`: not upcoming (cancelled, seated, released…) or already started. */
-  | { ok: false; reason: DayReason | 'no_longer_available' | 'not_changeable' };
+  | { ok: false; reason: DayReason | 'no_longer_available' | 'not_changeable' | 'invalid_day' | 'too_far' };
 
 /**
  * A time or party-size change is a RE-ALLOCATION (P0-6), not an edit: the
@@ -241,7 +310,20 @@ export type Change =
  * — the host moved it, not the guest — and a `confirmed` guest who moves
  * stays confirmed either way.
  */
-export async function changeReservation(req: ChangeRequest, config: PlacementConfig): Promise<Change> {
+export async function changeReservation(
+  req: ChangeRequest,
+  config: PlacementConfig,
+  /**
+   * Called INSIDE the transaction once the move has been written, so a
+   * caller's notification commits with the change it is about. Queued after
+   * the commit instead, a crash in between left the guest moved and the text
+   * saying so gone, with nothing recording that one had been owed.
+   *
+   * Only the success path takes a hook: a refusal has no committed state for
+   * a notification to be atomic with.
+   */
+  onChanged?: (tx: Prisma.TransactionClient, moved: { reservation: Reservation; was: { startAt: Date; partySize: number } }) => Promise<void>,
+): Promise<Change> {
   return prisma.$transaction(async (tx): Promise<Change> => {
     const [current] = await tx.$queryRaw<Reservation[]>`SELECT * FROM "Reservation" WHERE id = ${req.reservationId}::uuid FOR UPDATE`;
     if (!current || !isUpcoming(parseStatus(current.status)) || req.now.getTime() >= current.startAt.getTime()) {
@@ -290,6 +372,7 @@ export async function changeReservation(req: ChangeRequest, config: PlacementCon
         data: { reservationId: current.id, at: req.now, fromStatus: confirm.from, toStatus: confirm.to, source: req.source, note: 'confirmed by changing' },
       });
     }
+    await onChanged?.(tx, { reservation: updated, was });
     return { ok: true, reservation: updated, changed: true, was };
   }, { maxWait: 10_000, timeout: 10_000 });
 }

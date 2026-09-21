@@ -2,7 +2,10 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    include: ['packages/**/*.test.ts'],
+    // apps/web too: `apps/web/lib/demo-gate.test.ts` had existed since V-014
+    // and never once run, because this line said `packages` only. Playwright
+    // owns `*.spec.ts`, so the two suites cannot collide.
+    include: ['packages/**/*.test.ts', 'apps/web/**/*.test.ts'],
     // CLAUDE.md: the unit suite must produce identical results under any
     // process TZ. CI runs it twice (TZ=UTC and TZ=Pacific/Kiritimati) —
     // pacing-bucket and quiet-hours-boundary tests are exactly what a

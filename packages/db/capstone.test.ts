@@ -141,20 +141,44 @@ describe('the service invariants', () => {
     // table cleared early is genuinely free before its turn is up.
     const rows = await prisma.reservation.findMany({
       where: { status: { in: [...HOLDS_TABLES, ...SHOWED] } },
-      select: { id: true, guestName: true, startAt: true, turnMinutes: true, tableIds: true, status: true, events: { select: { toStatus: true, at: true } } },
+      select: { id: true, guestName: true, businessDay: true, startAt: true, turnMinutes: true, tableIds: true, status: true, events: { select: { toStatus: true, at: true } } },
     });
+
+    // PHYSICAL occupancy, which is not the same as the booked window.
+    //
+    // This used to end every party at `min(scheduled turn end, cleared)`, so a
+    // party that sat down and was never cleared counted as having left when
+    // their turn was up. A table can be physically occupied long past its
+    // turn — that is what an over-running party IS — and seating someone else
+    // into it is exactly the double-seating this test exists to catch, so the
+    // assertion could not have caught it.
+    //
+    //   from: when they actually sat, or their booked start if they have not
+    //         sat yet (a held table is not available to anyone else either).
+    //   to:   when the host actually cleared them; if they are still `seated`
+    //         at the end of the service, they never left — so the window runs
+    //         to STILL_THERE and any later party on that table is a clash.
+    const STILL_THERE = Number.POSITIVE_INFINITY;
     const occupancy = rows.flatMap((r) => {
-      const cleared = r.events.find((e) => e.toStatus === 'completed')?.at;
-      const end = plusMs(r.startAt, r.turnMinutes * 60_000);
+      const seated = r.events.filter((e) => e.toStatus === 'seated').at(-1)?.at;
+      const cleared = r.events.filter((e) => e.toStatus === 'completed').at(-1)?.at;
+      const to = cleared ? cleared.getTime() : r.status === 'seated' ? STILL_THERE : plusMs(r.startAt, r.turnMinutes * 60_000).getTime();
       return r.tableIds.map((tableId) => ({
         who: r.guestName,
         tableId,
-        from: r.startAt.getTime(),
-        to: Math.min(end.getTime(), cleared?.getTime() ?? end.getTime()),
+        day: r.businessDay,
+        from: (seated ?? r.startAt).getTime(),
+        to,
       }));
     });
+    // Within one service day. A party still `seated` when the night ends has
+    // no clear event to bound them, and the restaurant does not keep them
+    // overnight — so STILL_THERE must not reach across into tomorrow's book.
     const clashes = occupancy.flatMap((a, i) =>
-      occupancy.slice(i + 1).filter((b) => a.tableId === b.tableId && a.from < b.to && b.from < a.to).map((b) => `${a.tableId}: ${a.who} / ${b.who}`),
+      occupancy
+        .slice(i + 1)
+        .filter((b) => a.tableId === b.tableId && a.day === b.day && a.from < b.to && b.from < a.to)
+        .map((b) => `${a.tableId}: ${a.who} / ${b.who}`),
     );
     expect(clashes).toEqual([]);
     // A real service, not three rows that trivially cannot clash.

@@ -87,9 +87,19 @@ export function decideInbound(
   if (keyword === 'start') return { outcome: 'opted_in' };
   if (keyword === 'help') return { outcome: 'help' };
 
-  // A selection answers the next message only, and only while it is still upcoming.
-  const selected = within(last, 'selected') ? upcoming.find((r) => r.id === last.reservationId) : undefined;
-  const target = selected ?? (upcoming.length === 1 ? upcoming[0] : undefined);
+  // A selection answers the next message only, and only while it is still
+  // upcoming.
+  //
+  // A selection that has gone stale does NOT fall back to "the only one
+  // left". A guest offered A and B who picked A, whose A is then cancelled or
+  // starts, and who then texts X, was answering about A — and the fallback
+  // silently cancelled B instead, the one reservation they had not chosen.
+  // Having chosen once is what makes the guess unacceptable: the thread says
+  // which booking this conversation is about, and once that booking is gone
+  // the honest move is to ask again, not to pick the survivor.
+  const chose = within(last, 'selected');
+  const selected = chose ? upcoming.find((r) => r.id === last.reservationId) : undefined;
+  const target = chose ? selected : upcoming.length === 1 ? upcoming[0] : undefined;
   if (!target) {
     if (upcoming.length === 0) return { outcome: 'no_reservation' };
     return { outcome: 'choose', choices: upcoming.slice(0, MAX_CHOICES).map((r) => r.id) };

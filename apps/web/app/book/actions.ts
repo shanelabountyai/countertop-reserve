@@ -13,7 +13,7 @@ import { randomUUID } from 'node:crypto';
 import { redirect } from 'next/navigation';
 import { TAG_KINDS } from '@reserve/core';
 import { placeReservation } from '@reserve/db/placement';
-import { CONSENT, DAY, guestConfig, parseParty, parseSlot } from '@/lib/guest';
+import { CONSENT, isDay, guestConfig, parseParty, parseSlot } from '@/lib/guest';
 import { RESTAURANT } from '@/lib/restaurant';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -27,7 +27,7 @@ export async function book(f: FormData): Promise<void> {
   const back = (notice: string): never => {
     const q = new URLSearchParams({
       ...(party !== null && { party: String(party) }),
-      ...(DAY.test(day) && { day }),
+      ...(isDay(day) && { day }),
       ...(field(f, 'at') !== '' && { at: field(f, 'at') }),
       notice,
     });
