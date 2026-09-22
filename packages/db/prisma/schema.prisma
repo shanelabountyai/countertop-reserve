@@ -192,6 +192,12 @@ model ReservationEvent {
   /// guest_web | sms | host | system
   source           String
   note             String?
+  /// The tables this reservation held BEFORE a host moved it (P0-14). A move
+  /// changes no status, so its undo has to put the TABLES back and this log
+  /// is the only record of where they were. Empty on every other event, and
+  /// non-empty is what marks a move: every status a party can be moved out
+  /// of holds tables, so a move always has a previous unit to name.
+  fromTableIds     String[] @default([])
   /// The text that drove it, when source is `sms`.
   inboundMessageId BigInt?
 

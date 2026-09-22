@@ -1010,3 +1010,83 @@ pinned an exact 40 against a live clock where `freeMinutes` correctly floors
 to 39. Written up in `WRITEUP.md` — the second one is the interesting half,
 because rounding instead of flooring would have made the fixture pass and the
 board lie.
+
+## V-017 — Manual assignment
+
+The write half, and the most dangerous feature in the product: it invites
+exactly the check-then-write this project exists to avoid. The rule the item
+is built on is one sentence — **a host naming a table is choosing an INPUT to
+the allocation transaction, never a bypass of it.** If the board says free and
+the constraint disagrees, the constraint is right.
+
+**`firstUnit(units)` became "this unit, if it is in `units`", and nothing
+else changed.** `fit()` in `placement.ts` was already the whole ceremony — the
+schedule lock, the re-read of the schedule *under* that lock, the pacing
+bucket's advisory lock, the engine — so the host path was made to go through
+it rather than beside it. `fit` was exported and its config narrowed to a
+`FitConfig` of the three fields it actually reads, which is what let a
+`FloorConfig` call it without a parallel implementation growing.
+
+**`unitMisfit(plan, unitId, partySize)` in core: the inverse reading of
+`fittingUnits`.** `fittingUnits` answers "which units"; a host needs "why not
+that one". Same three rules, same order, reported one at a time —
+`too_large`, `too_small`, `over_seat_cap`, plus `unknown_unit`. The two
+readings are held together by a test rather than by comment: `unitMisfit` is
+null exactly when the unit is in `fittingUnits`, asserted over every unit
+against every party size. If they ever drift, a host is refused a table the
+engine would have picked itself.
+
+**Which engine answers depends on where the party IS, not on what the host
+tapped.** A future reservation goes through `fit` — inventory planning, so the
+pacing cap applies. A party already in the building, seated or waiting at the
+stand, goes through `walkIn` — no pacing and no service period, matching v1's
+"walk-ins skip pacing". The asymmetry is deliberate and is asserted both ways
+in one fixture: a booked four is refused `over_pacing_cap` for a move the
+seated four beside it is allowed.
+
+**A seated party may be moved, and the turn carries.** The new unit must be
+free for the *remainder* only — a party seated 19:00 on a 90-minute turn who
+moves at 19:20 needs 19:20–20:30, not a fresh 90 minutes. `walkIn` grew one
+optional `windowMinutes` for it. Restarting the turn was the rejected
+alternative and the reason is worth keeping: it would silently extend the new
+table's occupancy past the free-until the board displayed a moment earlier,
+turning a correct board into a lying one through a host action that looked
+harmless.
+
+**Delete-then-insert inside one savepoint, not acquire-then-release.** The
+spec says acquire the new unit before releasing the old. Within a single
+savepoint the two orders are the same guarantee — a refusal rolls the delete
+back with it, so there is no moment, committed or not, where the party holds
+nothing — and delete-first additionally handles a move onto a unit that
+shares a table with the current one, which acquire-first would refuse against
+the party's own hold.
+
+**Undo needed a new column.** A move changes no status, so `revert` had no
+edge to grip. `ReservationEvent.fromTableIds` records where the party came
+off; non-empty is what marks the one kind of event whose undo puts tables
+back. The five seconds stay in the lifecycle module (`revertTables`) so a
+mis-tap that puts a party on the wrong table gets exactly the same window as
+a mis-tap that seats them. The undo event deliberately carries no
+`fromTableIds` of its own, which is what makes an undo structurally
+un-undoable — otherwise a host could toggle a party between two tables
+indefinitely, each tap rolling the window forward.
+
+**The picker offers every unit on the plan, not the fitting ones.** Filtering
+it would have made `too_large`, `too_small` and `over_seat_cap` unreachable
+through the UI, leaving the named refusals as decoration for crafted POSTs.
+Same reasoning as the PRD's "a greyed-out slot is just UX": the menu is a
+suggestion, the transaction decides, and a named refusal teaches a host the
+rule where a silently missing option teaches them nothing.
+
+**Left behind:**
+- One migration, one column: `ReservationEvent.fromTableIds`.
+- `fitNow` grew `windowMinutes` and `except` — the latter so a party being
+  moved does not block their own move by holding the table they sit at.
+- The past-slot gate is stepped one millisecond behind the seating on the
+  assign path. `fit` is being asked which units fit a window the reservation
+  *already owns*, not whether a new booking may take it; applying the booking
+  rule would refuse a host assigning a table to a party ten minutes late,
+  which is the ordinary case in service.
+- A lingering seated party (past their window, still at the table) borrows
+  `walkIn`'s own assumption — gone within one slot — rather than inventing a
+  second one. A CHECK refuses a zero-length hold regardless.

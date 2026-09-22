@@ -8,7 +8,7 @@
 import { randomUUID } from 'node:crypto';
 import { redirect } from 'next/navigation';
 import { dayOf, isCalendarDay, STATUSES, type Status } from '@reserve/core';
-import { addWalkIn, hostMove, tableReady, undoLast } from '@reserve/db/floor';
+import { addWalkIn, assignUnit, hostMove, tableReady, undoLast } from '@reserve/db/floor';
 import { mockProvider } from '@reserve/db/messages';
 import { RESTAURANT } from '@/lib/restaurant';
 
@@ -33,6 +33,19 @@ export async function move(f: FormData): Promise<void> {
   if (!(STATUSES as readonly string[]).includes(to)) back(f, 'no_edge');
   const r = await hostMove(id, to as Status, RESTAURANT, new Date());
   back(f, r.ok ? undefined : r.reason);
+}
+
+/**
+ * The host names a table (P0-14). The unit id is NOT validated against the
+ * floor plan here: `assignUnit` re-reads the plan inside its transaction and
+ * answers `unknown_unit`, so a stale picker and a crafted POST get the same
+ * honest refusal rather than two different ones.
+ */
+export async function assign(f: FormData): Promise<void> {
+  const id = rowId(f);
+  const unit = field(f, 'unit');
+  const r = await assignUnit(id, unit, RESTAURANT, new Date());
+  back(f, r.ok ? (r.from.length === 0 ? 'assigned' : 'moved') : `assign_${r.reason}`);
 }
 
 export async function undo(f: FormData): Promise<void> {

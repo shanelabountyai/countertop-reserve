@@ -175,6 +175,24 @@ export function revert(
   return { ok: true, from: r.status, to: last.fromStatus, tables: tableEffect(r.status, last.fromStatus) };
 }
 
+/**
+ * Undo for a host action that moved TABLES and no status (P0-14's assign and
+ * move). There is no edge to check — the reservation is in the status it was
+ * already in — so this is the window and the actor, and nothing else.
+ *
+ * It lives here rather than in the caller so `undoSeconds` stays a fact of
+ * ONE module: a mis-tap that puts a party on the wrong table gets exactly the
+ * same five seconds as a mis-tap that seats them.
+ *
+ * The caller still has to re-acquire the old tables under the exclusion
+ * constraint, which can refuse — an undo is an allocation like any other.
+ */
+export function revertTables(last: { at: Date; actor: Actor }, now: Date, policy: LifecyclePolicy = DEFAULT_POLICY): { ok: true } | { ok: false; reason: Rejection } {
+  if (last.actor !== 'host') return { ok: false, reason: 'not_revertible' };
+  if (now.getTime() - last.at.getTime() > policy.undoSeconds * 1000) return { ok: false, reason: 'undo_expired' };
+  return { ok: true };
+}
+
 /** `Reservation.status` is plain text in the DB; this is the only way in. */
 export function parseStatus(s: string): Status {
   if ((STATUSES as readonly string[]).includes(s)) return s as Status;

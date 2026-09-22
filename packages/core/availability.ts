@@ -201,6 +201,15 @@ export type WalkInInput = {
   reservations: readonly (HeldReservation & { seated?: boolean })[];
   now: Date;
   turnBands?: TurnBands;
+  /**
+   * Check this window instead of a fresh turn (P0-14). Set only when moving
+   * an already-seated party: their window is anchored to the seat event they
+   * already had, so the new table must be free for the REMAINDER — a party
+   * seated 19:00 on a 90-minute turn who moves at 19:20 needs 19:20–20:30,
+   * not a fresh 90 minutes. Restarting the turn would silently extend the
+   * new table's occupancy past the free-until the board showed a moment ago.
+   */
+  windowMinutes?: number | undefined;
 };
 
 export type WalkIn =
@@ -235,7 +244,7 @@ export function walkIn(input: WalkInInput): WalkIn {
     const end = r.start.getTime() + r.turnMinutes * 60_000;
     return r.seated && end < n + slotMs ? { ...r, turnMinutes: (n + slotMs - r.start.getTime()) / 60_000 } : r;
   });
-  const turnMs = turnMinutes(partySize, input.turnBands ?? DEFAULT_TURN_BANDS) * 60_000;
+  const turnMs = (input.windowMinutes ?? turnMinutes(partySize, input.turnBands ?? DEFAULT_TURN_BANDS)) * 60_000;
 
   const free = freeUnits(units, held, n, turnMs);
   if (free.length > 0) return { seatable: true, units: free };

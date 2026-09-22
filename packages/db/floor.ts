@@ -9,34 +9,41 @@
 // clean refusal, never an error.
 
 import {
+  allUnits,
   DEFAULT_POLICY,
   DEFAULT_TEMPLATES,
   DEFAULT_TURN_BANDS,
   HOLDS_TABLES,
+  holdsTables,
   invalidGuestField,
   parseStatus,
   plusMs,
   renderMessage,
   revert,
+  revertTables,
+  SLOT_MINUTES,
   tableStates,
   transition,
   turnMinutes,
+  unitMisfit,
   walkIn,
   type Actor,
   type Decision,
   type GuestFields,
   type InvalidField,
   type MessageKind,
+  type PlanUnit,
   type Rejection,
   type SendPolicy,
   type Status,
   type TableStateRow,
   type Templates,
   type TurnBands,
+  type UnitMisfit,
 } from '@reserve/core';
 import { Prisma, prisma, type Reservation } from './index';
 import { dispatchQueued, newManageToken, type MessageProvider } from './messages';
-import { firstUnit, loadPlan } from './placement';
+import { fit, firstUnit, loadPlan } from './placement';
 
 export type FloorConfig = {
   restaurant: string;
@@ -87,9 +94,13 @@ export async function loadFloor(day: string, now: Date): Promise<FloorRow[]> {
   return rows.map((r) => {
     const status = parseStatus(r.status);
     const last = r.events.at(-1);
+    // A move (P0-14) reverts tables, everything else reverts a status — the
+    // row only needs to know whether the five seconds are still running.
     const undo =
       last &&
-      revert({ status, startAt: r.startAt }, { fromStatus: last.fromStatus === null ? null : parseStatus(last.fromStatus), toStatus: parseStatus(last.toStatus), at: last.at, actor: actorOf(last.source) }, now);
+      (last.fromTableIds.length > 0
+        ? revertTables({ at: last.at, actor: actorOf(last.source) }, now)
+        : revert({ status, startAt: r.startAt }, { fromStatus: last.fromStatus === null ? null : parseStatus(last.fromStatus), toStatus: parseStatus(last.toStatus), at: last.at, actor: actorOf(last.source) }, now));
     return {
       id: r.id,
       status,
@@ -200,6 +211,31 @@ export async function undoLast(id: string, config: FloorConfig, now: Date): Prom
     if (!r) return { ok: false, reason: 'not_found' };
     const last = await tx.reservationEvent.findFirst({ where: { reservationId: id }, orderBy: { id: 'desc' } });
     if (!last) return { ok: false, reason: 'not_revertible' };
+    // A move (P0-14) changed tables and no status, so there is no edge for
+    // `revert` to grip: the undo re-acquires the tables the log says they
+    // came off, over the window the current holds cover. It is an allocation
+    // like any other and the constraint can still refuse it — a table given
+    // away in those five seconds is not taken back.
+    if (last.fromTableIds.length > 0) {
+      const d = revertTables({ at: last.at, actor: actorOf(last.source) }, now);
+      if (!d.ok) return d;
+      const [hold] = await tx.tableHold.findMany({ where: { reservationId: id }, take: 1 });
+      if (!hold) return { ok: false, reason: 'not_revertible' };
+      const back = await firstUnit(tx, [{ tableIds: last.fromTableIds }], async (tableIds) => {
+        await tx.tableHold.deleteMany({ where: { reservationId: id } });
+        await tx.tableHold.createMany({ data: tableIds.map((tableId) => ({ reservationId: id, tableId, startAt: hold.startAt, endAt: hold.endAt })) });
+        return tableIds;
+      });
+      if (!back) return { ok: false, reason: 'table_taken' };
+      await tx.reservation.update({ where: { id }, data: { tableIds: back } });
+      // The undo event carries NO `fromTableIds`, which is what makes an undo
+      // structurally un-undoable: otherwise a host could toggle a party
+      // between two tables indefinitely, each tap rolling the window forward.
+      await tx.reservationEvent.create({
+        data: { reservationId: id, at: now, fromStatus: r.status, toStatus: r.status, source: 'host', note: `undo: back to ${back.join('+')}` },
+      });
+      return { ok: true, status: parseStatus(r.status) };
+    }
     const d = revert(
       { status: parseStatus(r.status), startAt: r.startAt },
       { fromStatus: last.fromStatus === null ? null : parseStatus(last.fromStatus), toStatus: parseStatus(last.toStatus), at: last.at, actor: actorOf(last.source) },
@@ -241,12 +277,20 @@ async function apply(tx: Prisma.TransactionClient, r: Reservation, d: Decision, 
   return { ok: true, status: d.to };
 }
 
-/** The walk-in engine fed from what holds tables around `now`, read inside the transaction. */
-async function fitNow(tx: Prisma.TransactionClient, partySize: number, config: FloorConfig, now: Date) {
+/**
+ * The walk-in engine fed from what holds tables around `now`, read inside the
+ * transaction.
+ *
+ * `windowMinutes` checks a window other than a fresh turn — the remainder of
+ * a seated party's turn, when a host moves them (P0-14). `except` leaves one
+ * reservation out of the occupied set, so a party being moved does not block
+ * their own move by holding the table they are sitting at.
+ */
+async function fitNow(tx: Prisma.TransactionClient, partySize: number, config: FloorConfig, now: Date, windowMinutes?: number, except?: string) {
   const plan = await loadPlan(tx, config.overSeatCap);
   const day = 24 * 3_600_000;
   const held = await tx.reservation.findMany({
-    where: { status: { in: [...HOLDS_TABLES] }, startAt: { gt: plusMs(now, -day), lt: plusMs(now, day) } },
+    where: { status: { in: [...HOLDS_TABLES] }, startAt: { gt: plusMs(now, -day), lt: plusMs(now, day) }, ...(except && { id: { not: except } }) },
     select: { startAt: true, partySize: true, turnMinutes: true, tableIds: true, status: true },
   });
   return walkIn({
@@ -255,7 +299,165 @@ async function fitNow(tx: Prisma.TransactionClient, partySize: number, config: F
     reservations: held.map((r) => ({ ...r, start: r.startAt, seated: r.status === 'seated' })),
     now,
     turnBands: config.turnBands ?? DEFAULT_TURN_BANDS,
+    windowMinutes,
   });
+}
+
+// ─── Manual assignment (P0-14) ──────────────────────────────────────────────
+//
+// The host names the unit; the transaction still decides. This is the most
+// dangerous feature in the product because it invites exactly the
+// check-then-write the project exists to avoid, so the rule is narrow: a
+// host-named unit is an INPUT to the same allocation, never a bypass of it.
+// `firstUnit(units)` becomes "this unit, if it is in `units`" and nothing
+// else changes — same advisory lock, same schedule re-read under the lock,
+// same exclusion constraint. If the board says free and the constraint
+// disagrees, the constraint is right.
+
+/** `unit_held`: the unit fits, but someone else has it for the window. */
+export type AssignRefusal = UnitMisfit | Rejection | 'not_found' | 'not_assignable' | 'unit_held' | 'outside_hours' | 'over_pacing_cap' | 'no_longer_available';
+
+export type AssignResult = { ok: true; status: Status; tableIds: string[]; from: string[] } | { ok: false; reason: AssignRefusal };
+
+/**
+ * Whether a host may name a table for this status. Derived from the ONE
+ * lifecycle module plus the one status that is deliberately not in it:
+ * `waitlisted` holds no tables precisely because it is waiting for one, and
+ * naming it a table is how it stops waiting. Everything terminal is out.
+ */
+const assignable = (s: Status) => s === 'waitlisted' || holdsTables(s);
+
+/** The engine's refusal, in the host's vocabulary. */
+function assignReason(reason: string): AssignRefusal {
+  switch (reason) {
+    case 'closed':
+    case 'past':
+      return 'outside_hours';
+    case 'pacing':
+      return 'over_pacing_cap';
+    case 'full':
+      return 'unit_held';
+    case 'too_large':
+    case 'too_small':
+      return reason;
+    // `invalid_day` and `too_far` are facts about a request; a stored
+    // reservation's day was validated when it was booked.
+    default:
+      return 'not_assignable';
+  }
+}
+
+/**
+ * Put this party on this unit. An assignment and a move are the same
+ * operation — the difference is only whether the party already had a table.
+ *
+ * Which engine answers depends on where the party IS, not on what the host
+ * tapped. A future reservation goes through `fit`: inventory planning, so
+ * the pacing cap applies. A party already in the building — seated, or
+ * waitlisted at the stand — goes through `walkIn`: no pacing and no service
+ * period, matching v1's "walk-ins skip pacing". The asymmetry is deliberate.
+ */
+/**
+ * Every unit a host may name. The picker offers them ALL, deliberately: the
+ * engine's fitting set is not a filter on the menu, because `too_small` on a
+ * table a host expected to work teaches them the rule, and a silently missing
+ * option teaches them nothing. Same reasoning as the PRD's "a greyed-out slot
+ * is just UX" — the transaction is what refuses.
+ */
+export const loadUnits = async (config: FloorConfig): Promise<PlanUnit[]> => allUnits(await loadPlan(prisma, config.overSeatCap));
+
+export async function assignUnit(id: string, unitId: string, config: FloorConfig, now: Date): Promise<AssignResult> {
+  return prisma.$transaction(async (tx): Promise<AssignResult> => {
+    const r = await locked(tx, id);
+    if (!r) return { ok: false, reason: 'not_found' };
+    const status = parseStatus(r.status);
+    if (!assignable(status)) return { ok: false, reason: 'not_assignable' };
+
+    const plan = await loadPlan(tx, config.overSeatCap);
+    // The floor-plan rules first, and one at a time: they depend on nothing
+    // that can change under us, and naming the rule that refused is the whole
+    // point of the item. A host hears "T4 seats six, they are three" — never
+    // a bare no, and never a silently forced seat.
+    const misfit = unitMisfit(plan, unitId, r.partySize);
+    if (misfit) return { ok: false, reason: misfit };
+    const unit = allUnits(plan).find((u) => u.id === unitId)!;
+
+    const bands = config.turnBands ?? DEFAULT_TURN_BANDS;
+    const inBuilding = status === 'seated' || status === 'waitlisted';
+
+    // The window being taken. A seated party's turn is anchored to the seat
+    // event they already had and does NOT restart because the table did: a
+    // party seated 19:00 on a 90-minute turn ends 20:30 whether or not they
+    // move at 19:20, so the new unit must be free for the remainder only.
+    // Restarting it would silently extend the new table's occupancy past the
+    // free-until the board displayed a moment earlier.
+    const turn = status === 'waitlisted' ? turnMinutes(r.partySize, bands) : r.turnMinutes;
+    const anchor = status === 'waitlisted' ? now : r.startAt;
+    const holdStart = inBuilding ? now : r.startAt;
+    // A lingering party is past their window but still holds the table. They
+    // borrow `walkIn`'s own assumption — gone within one slot — rather than
+    // inventing a second one, and a CHECK refuses a zero-length hold anyway.
+    const floor = plusMs(now, SLOT_MINUTES * 60_000);
+    const turnEnd = plusMs(anchor, turn * 60_000);
+    const holdEnd = !inBuilding || turnEnd.getTime() > floor.getTime() ? turnEnd : floor;
+
+    let free: readonly { id: string }[];
+    if (inBuilding) {
+      const fitted = await fitNow(tx, r.partySize, config, now, Math.round((holdEnd.getTime() - now.getTime()) / 60_000), id);
+      if (!fitted.seatable) return { ok: false, reason: fitted.reason === 'wait' ? 'unit_held' : fitted.reason };
+      free = fitted.units;
+    } else {
+      // `fit` is asked which units fit a window this reservation ALREADY
+      // owns, so its past-slot gate is stepped behind the seating rather than
+      // applied: a host assigning a table to a party ten minutes late is the
+      // ordinary case, and refusing it would make the feature useless in
+      // service. Everything else about `fit` is untouched — the schedule
+      // lock, the re-read under it, the bucket lock and the pacing cap.
+      const asOf = now.getTime() < r.startAt.getTime() ? now : plusMs(r.startAt, -1);
+      const f = await fit(tx, { day: r.businessDay, startAt: r.startAt, partySize: r.partySize, now: asOf }, config, id);
+      if (!f.ok) return { ok: false, reason: assignReason(f.reason) };
+      free = f.units;
+    }
+    if (!free.some((u) => u.id === unitId)) return { ok: false, reason: 'unit_held' };
+
+    // Seating a waitlisted party is a status change and goes through the ONE
+    // lifecycle module; moving an already-seated or booked party is not.
+    const seat = status === 'waitlisted' ? transition({ status, startAt: r.startAt }, 'seated', 'host', now) : null;
+    if (seat && !seat.ok) return seat;
+
+    // The old holds are deleted and the new ones inserted INSIDE the
+    // savepoint, so a refusal restores the old ones with it: there is no
+    // moment, committed or not, where the party holds nothing. Delete-first
+    // rather than the spec's acquire-first because within one savepoint they
+    // are the same guarantee, and this order also handles a move onto a unit
+    // that shares a table with the current one.
+    const taken = await firstUnit(tx, [unit], async (tableIds) => {
+      await tx.tableHold.deleteMany({ where: { reservationId: r.id } });
+      await tx.tableHold.createMany({ data: tableIds.map((tableId) => ({ reservationId: r.id, tableId, startAt: holdStart, endAt: holdEnd })) });
+      return tableIds;
+    });
+    if (!taken) return { ok: false, reason: 'no_longer_available' };
+
+    await tx.reservation.update({
+      where: { id: r.id },
+      data: { tableIds: taken, ...(seat?.ok && { status: seat.to, statusChangedAt: now, startAt: now, turnMinutes: turn }) },
+    });
+    await tx.reservationEvent.create({
+      data: {
+        reservationId: r.id,
+        at: now,
+        fromStatus: status,
+        toStatus: seat?.ok ? seat.to : status,
+        source: 'host',
+        note: r.tableIds.length === 0 ? `seated at ${unitId}` : `moved from ${r.tableIds.join('+')} to ${unitId}`,
+        // Non-empty is what marks a move for `undoLast`: its undo puts TABLES
+        // back, not a status. A waitlisted party had none, and their undo is
+        // the ordinary status revert.
+        fromTableIds: r.tableIds,
+      },
+    });
+    return { ok: true, status: seat?.ok ? seat.to : status, tableIds: taken, from: r.tableIds };
+  }, TX);
 }
 
 export type WalkInRequest = GuestFields & {

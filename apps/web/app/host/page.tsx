@@ -5,11 +5,11 @@
 // re-derived on the client. Which buttons a row gets comes from the lifecycle
 // module's edge table (`allows`), never from a status list kept here.
 import { randomUUID } from 'node:crypto';
-import { allows, dayOf, isCalendarDay, minuteOfDay, periodAt, periodsFor, whenSlots, type Status } from '@reserve/core';
-import { floorCursor, loadFloor, WAITLIST_CONSENT, type FloorRow } from '@reserve/db/floor';
+import { allows, dayOf, holdsTables, isCalendarDay, minuteOfDay, periodAt, periodsFor, whenSlots, type PlanUnit, type Status } from '@reserve/core';
+import { floorCursor, loadFloor, loadUnits, WAITLIST_CONSENT, type FloorRow } from '@reserve/db/floor';
 import { loadSchedule } from '@reserve/db/schedule';
 import { RESTAURANT } from '@/lib/restaurant';
-import { move, ready, undo, walkIn } from './actions';
+import { assign, move, ready, undo, walkIn } from './actions';
 import { Expiring } from './expiring';
 import { LiveUpdates } from './live-updates';
 
@@ -50,7 +50,25 @@ const NOTICES: Record<string, string> = {
   invalid_guestPhone: 'That phone number is not valid — and a text needs one.',
   invalid_guestName: 'Enter a name.',
   invalid_party: 'Enter a party size.',
+  // Manual assignment (P0-14). Each refusal names the rule that said no: the
+  // host is choosing an input to allocation, so "no" on its own is useless.
+  assigned: 'Seated at the table you picked.',
+  moved: 'Moved.',
+  assign_too_large: 'That table does not seat a party that large.',
+  assign_too_small: 'That table is too big for a party that small.',
+  assign_over_seat_cap: 'That would leave too many empty seats — pick something smaller.',
+  assign_unit_held: 'That table is held for part of the time they need.',
+  assign_outside_hours: 'That seating is outside service hours.',
+  assign_over_pacing_cap: 'The kitchen is at its cap for that 15 minutes.',
+  assign_unknown_unit: 'No such table on the floor plan.',
+  assign_no_longer_available: 'That table was just taken — try again.',
+  assign_not_assignable: 'That party cannot be given a table.',
+  assign_not_found: 'That party is no longer on the floor.',
 };
+
+/** A host who taps and sees nothing has been lied to; an unmapped refusal still says something true. */
+const noticeText = (notice: string | undefined) =>
+  notice ? (NOTICES[notice] ?? (notice.startsWith('assign_') ? 'That table could not be given to this party.' : null)) : null;
 
 // Distinct by kind, in text and shape as well as colour (P0-9): an allergy is
 // the loudest thing on the row, never styled like a birthday.
@@ -71,7 +89,7 @@ export default async function HostPage({ searchParams }: { searchParams: Promise
   const now = new Date();
   const today = dayOf(now, TZ);
   const day = dayParam && isCalendarDay(dayParam) ? dayParam : today;
-  const [rows, cursor, schedule] = await Promise.all([loadFloor(day, now), floorCursor(), loadSchedule(TZ)]);
+  const [rows, cursor, schedule, units] = await Promise.all([loadFloor(day, now), floorCursor(), loadSchedule(TZ), loadUnits(RESTAURANT)]);
 
   const periods = [...periodsFor(schedule, day)].sort((a, b) => a.openMinute - b.openMinute);
   const periodOf = (r: FloorRow) => periodAt(periods, minuteOfDay(r.startAt, TZ))?.name ?? 'Outside service hours';
@@ -103,7 +121,7 @@ export default async function HostPage({ searchParams }: { searchParams: Promise
       </header>
 
       <div aria-live="polite" className="mt-3 min-h-8">
-        {notice && NOTICES[notice] ? <p className="rounded-lg border-2 border-neutral-800 bg-yellow-100 px-4 py-2 font-semibold">{NOTICES[notice]}</p> : null}
+        {noticeText(notice) ? <p className="rounded-lg border-2 border-neutral-800 bg-yellow-100 px-4 py-2 font-semibold">{noticeText(notice)}</p> : null}
       </div>
 
       <WalkInForm />
@@ -112,7 +130,7 @@ export default async function HostPage({ searchParams }: { searchParams: Promise
         <h2 id="waitlist" className="text-2xl font-bold">
           Waitlist <span className="font-normal">({waitlist.length})</span>
         </h2>
-        {waitlist.length === 0 ? <p className="mt-2 text-neutral-700">Nobody waiting.</p> : <ul className="mt-2 flex flex-col gap-3">{waitlist.map((r) => <Row key={r.id} r={r} day={day} now={now} />)}</ul>}
+        {waitlist.length === 0 ? <p className="mt-2 text-neutral-700">Nobody waiting.</p> : <ul className="mt-2 flex flex-col gap-3">{waitlist.map((r) => <Row key={r.id} r={r} day={day} now={now} units={units} />)}</ul>}
       </section>
 
       {groups.length === 0 ? <p className="mt-6">No reservations on this day.</p> : null}
@@ -123,7 +141,7 @@ export default async function HostPage({ searchParams }: { searchParams: Promise
           </h2>
           <ul className="mt-2 flex flex-col gap-3">
             {g.rows.map((r) => (
-              <Row key={r.id} r={r} day={day} now={now} />
+              <Row key={r.id} r={r} day={day} now={now} units={units} />
             ))}
           </ul>
         </section>
@@ -132,7 +150,7 @@ export default async function HostPage({ searchParams }: { searchParams: Promise
   );
 }
 
-function Row({ r, day, now }: { r: FloorRow; day: string; now: Date }) {
+function Row({ r, day, now, units }: { r: FloorRow; day: string; now: Date; units: PlanUnit[] }) {
   const done = !allows(r.status, 'seated', 'host') && !allows(r.status, 'completed', 'host');
   const readyText = r.messages.find((m) => m.kind === 'table_ready');
   const failed = r.messages.filter((m) => m.status === 'failed');
@@ -196,8 +214,53 @@ function Row({ r, day, now }: { r: FloorRow; day: string; now: Date }) {
         {allows(r.status, 'no_show', 'host') ? <Tap action={move} id={r.id} day={day} to="no_show" label="No-show" className="border-2 border-neutral-800 bg-white" /> : null}
         {allows(r.status, 'cancelled', 'host') ? <Tap action={move} id={r.id} day={day} to="cancelled" label="Cancel" className="border-2 border-red-800 bg-white text-red-800" /> : null}
         {allows(r.status, 'abandoned', 'host') ? <Tap action={move} id={r.id} day={day} to="abandoned" label="Remove" className="border-2 border-red-800 bg-white text-red-800" /> : null}
+        <AssignForm r={r} day={day} units={units} />
       </div>
     </li>
+  );
+}
+
+/**
+ * Manual assignment (P0-14). Every unit on the plan is offered, not just the
+ * ones that fit: the server re-reads the plan and names the rule that
+ * refused, so a host learns why T4 is wrong for a deuce instead of hunting
+ * for an option that was silently missing. The picker is a suggestion; the
+ * transaction decides.
+ */
+function AssignForm({ r, day, units }: { r: FloorRow; day: string; units: PlanUnit[] }) {
+  // A waitlisted party holds no table precisely because it is waiting for one.
+  if (!(r.status === 'waitlisted' || holdsTables(r.status))) return null;
+  const key = (ids: readonly string[]) => [...ids].sort().join('|');
+  const current = units.find((u) => key(u.tableIds) === key(r.tableIds))?.id;
+  const sections = [...new Set(units.map((u) => u.section))].sort();
+
+  return (
+    <form action={assign} className="flex items-center gap-2">
+      <input type="hidden" name="id" value={r.id} />
+      <input type="hidden" name="day" value={day} />
+      <select
+        name="unit"
+        defaultValue={current ?? ''}
+        aria-label={`Table for ${r.guestName}`}
+        className="min-h-12 rounded-lg border-2 border-neutral-500 bg-white px-2"
+      >
+        {current ? null : <option value="">Pick a table…</option>}
+        {sections.map((section) => (
+          <optgroup key={section} label={section}>
+            {units
+              .filter((u) => u.section === section)
+              .map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.id} · {u.seats} seats{u.combination ? ` (${u.tableIds.join('+')})` : ''}
+                </option>
+              ))}
+          </optgroup>
+        ))}
+      </select>
+      <button type="submit" className="min-h-12 min-w-12 rounded-lg border-2 border-neutral-800 bg-white px-4 font-semibold">
+        {r.tableIds.length === 0 ? 'Seat here' : 'Move'}
+      </button>
+    </form>
   );
 }
 

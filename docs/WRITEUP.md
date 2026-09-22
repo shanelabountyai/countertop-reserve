@@ -672,6 +672,32 @@ it can freeze the clock — what it must not do is make the product round in a
 direction that suits the assertion.
 
 
+### V-017 — a fixture whose setup failed silently, and tested nothing
+
+Not a product defect; a test defect, and the kind that is invisible because
+it makes tests *pass* elsewhere while quietly hollowing out the one it is in.
+
+The fixture for "seat a waitlisted party on a named table" needed a table to
+come free first, so it called `hostMove(onT1.id, 'completed', ...)` and moved
+on. But `booked → completed` is not an edge in the lifecycle table — a party
+must be `seated` before they can be cleared — so the call returned
+`{ ok: false, reason: 'no_edge' }`, the table never came free, and the
+assertion that should have proved a successful seat instead recorded
+`unit_held`.
+
+It surfaced only because the expectation was written before the fixture ran,
+so the mismatch was loud. Had the test been written to match observed
+behaviour, it would have passed for ever while asserting the opposite of its
+own name.
+
+The rule taken from it: **a fixture's own state changes get asserted, not
+assumed.** `expect(await hostMove(...)).toEqual({ ok: true, status:
+'cancelled' })` is one more line and it converts a silent no-op into a
+failure at the line that caused it. The lifecycle module was right — this is
+exactly the transition table refusing an invalid edge, which is what it is
+for. The test was the thing that ignored the answer.
+
+
 ## Skills Learned / Functions Unlocked
 
 - **An exclusion constraint, and knowing when a unique constraint is a

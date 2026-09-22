@@ -50,7 +50,7 @@ before any new write path exists.
   a 90-minute walk-in, and a bare green dot is the defect the spec exists to
   prevent. Reuses P0-9's 10s cursor rather than adding a second poll.
   Hand-calculated fixtures before implementation.
-- [ ] **V-017** — Manual assignment *(P0-14)* — the host names the unit, the
+- [x] **V-017** — Manual assignment *(P0-14)* — the host names the unit, the
   same transaction still decides: identical advisory lock, schedule re-read
   under the lock, and constraint, with `firstUnit(units)` becoming "this
   unit, if it is in `units`". A unit outside the fitting set is refused with

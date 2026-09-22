@@ -139,14 +139,23 @@ export async function placeReservation(req: PlaceRequest, config: PlacementConfi
 }
 
 /**
+ * What `fit` needs, and nothing else. A booking, a guest change and a host's
+ * manual assignment (P0-14) are three callers with three different configs;
+ * narrowing here is what lets the host path go through the SAME lock, the
+ * same re-read and the same engine rather than growing a parallel one.
+ */
+export type FitConfig = { timezone: string; overSeatCap: number; turnBands?: TurnBands | undefined };
+const fitConfig = (c: PlacementConfig): FitConfig => ({ timezone: c.schedule.timezone, overSeatCap: c.overSeatCap, turnBands: c.turnBands });
+
+/**
  * Steps 1–2: take the bucket lock, read what is held, ask the engine. `except`
  * leaves one reservation out of the occupied set — a change must not collide
  * with the booking it replaces.
  */
-async function fit(
+export async function fit(
   tx: Prisma.TransactionClient,
   q: { day: string; startAt: Date; partySize: number; now: Date },
-  config: PlacementConfig,
+  config: FitConfig,
   except?: string,
 ) {
   // Two facts about the request itself, before any inventory is read. Both
@@ -159,7 +168,7 @@ async function fit(
   // instant while `businessDay` kept the impossible original, and the row
   // then showed up on one date by the floor's query and another by its own
   // clock. The day a reservation NAMES must be the day its instant FALLS on.
-  const tz = config.schedule.timezone;
+  const tz = config.timezone;
   if (!isCalendarDay(q.day) || dayOf(q.startAt, tz) !== q.day) return { ok: false as const, reason: 'invalid_day' as const };
   if (q.day > lastBookableDay(q.now, tz)) return { ok: false as const, reason: 'too_far' as const };
 
@@ -228,7 +237,7 @@ export async function firstUnit<T>(tx: Prisma.TransactionClient, units: readonly
 }
 
 async function allocate(tx: Prisma.TransactionClient, req: PlaceRequest, config: PlacementConfig): Promise<Placement> {
-  const f = await fit(tx, req, config);
+  const f = await fit(tx, req, fitConfig(config));
   if (!f.ok) return f;
   const manageToken = newManageToken();
   // Rendered once, here, and stored: the snapshot rule for messages. Too long
@@ -335,7 +344,7 @@ export async function changeReservation(
     if (req.startAt.getTime() === current.startAt.getTime() && req.partySize === current.partySize) {
       return { ok: true, reservation: current, changed: false, was };
     }
-    const f = await fit(tx, req, config, current.id);
+    const f = await fit(tx, req, fitConfig(config), current.id);
     if (!f.ok) return f;
     // booked → confirmed, through the ONE lifecycle module; `keep` tables.
     const confirm = req.source === 'host' ? null : transition({ status: parseStatus(current.status), startAt: current.startAt }, 'confirmed', 'guest', req.now);

@@ -80,6 +80,29 @@ export function fittingUnits(plan: FloorPlan, partySize: number): Unit[] {
     .map(({ id, tableIds, seats, combination }) => ({ id, tableIds, seats, combination }));
 }
 
+/**
+ * Why a NAMED unit may not seat `partySize` (P0-14), or null if it fits.
+ *
+ * The inverse reading of `fittingUnits`, over the same three rules and in
+ * the same order — `fittingUnits` answers "which units", this answers "why
+ * not that one". A host naming a table is choosing an INPUT to allocation,
+ * so the rule that refuses has to be nameable; `fittingUnits` only ever
+ * returns a set, and "it wasn't in the set" is not something to tell a host.
+ *
+ * The two readings are held together by a test, not by comment: null here
+ * iff the unit is in `fittingUnits`, for every unit and every party size.
+ */
+export type UnitMisfit = 'unknown_unit' | 'too_large' | 'too_small' | 'over_seat_cap';
+
+export function unitMisfit(plan: FloorPlan, unitId: string, partySize: number): UnitMisfit | null {
+  const u = allUnits(plan).find((x) => x.id === unitId);
+  if (!u) return 'unknown_unit';
+  if (partySize > u.seats) return 'too_large';
+  if (partySize < u.minParty) return 'too_small';
+  if (u.seats - partySize > plan.overSeatCap) return 'over_seat_cap';
+  return null;
+}
+
 /** The largest party any unit can seat. */
 export function largestUnitSeats(plan: FloorPlan): number {
   return Math.max(0, ...plan.tables.map((t) => t.seats), ...plan.combinations.map((c) => c.seats));

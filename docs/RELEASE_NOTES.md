@@ -430,3 +430,42 @@ two parties end up standing at the same table.
 The board is read-only. Naming a table yourself is the next piece of work,
 and it is the dangerous one: a host choosing a table has to be an *input* to
 the same allocation the app already does, never a way around it.
+
+## V-017 — Naming the table yourself
+
+The board could show a host what was free. It could not let them say *put
+them on 12*. This is that, and it is the piece of the product that had to be
+built most carefully, because it is exactly where a reservation system
+usually goes wrong.
+
+The wrong way to build it is obvious and comfortable: look up whether the
+table is free, then write the booking. Two hosts doing that a half-second
+apart both see "free" and both write, and now two parties have table 12.
+Every guard you add around that shape — a greyed-out button, a confirmation
+step, a refresh — narrows the window without closing it.
+
+So a host naming a table here does not get their own code path. They get to
+put a *suggestion* into the same allocation the app already runs: the same
+lock, the same re-read of tonight's hours under that lock, the same database
+constraint that has always been the thing actually deciding. The only
+difference is which table it tries. If the constraint disagrees with what the
+board showed a moment ago, the constraint wins and nobody is seated twice.
+
+The refusals say which rule stopped them, which is the other half of being
+useful. Not "can't do that" — *that table doesn't seat a party that large*,
+*that table is held for part of the time they need*, *the kitchen is at its
+cap for that fifteen minutes*. And the picker deliberately lists every table
+on the floor plan, including the ones that will be refused. A host learns the
+rule from being told it. They learn nothing from an option that quietly was
+not there.
+
+Two things about moving a party who is already sitting down. Their clock does
+not restart because their table changed — a party seated at seven on a
+ninety-minute turn is done at eight-thirty whether or not they move at
+seven-twenty, so the new table only has to be free for what is left of their
+meal. And the table they left is free *immediately*, bookable by the next
+walk-in in the same breath, not whenever some background job next runs.
+
+A move is undoable for five seconds, like every other host tap. Undo is an
+allocation too, so if the table was given away inside those five seconds, it
+says so rather than taking it back.
