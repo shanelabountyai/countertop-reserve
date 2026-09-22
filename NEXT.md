@@ -48,9 +48,13 @@ CLAUDE.md "Definition of done".
   history. Identify a database by its **endpoint** instead — this project is
   `ep-dawn-snow-b4dkr9e2` (`c-6.us-east-2`), Countertop is
   `ep-empty-dream-a5px6wnr` (`us-east-2`).
-- **The new migration has NOT been applied to the Neon dev branch.** Only
-  `db:migrate:test` ran locally. `npm run db:migrate:all` before the next
-  demo against dev; production deploy is its own deliberate command.
+- **V-017's migration is applied everywhere** — local test, local
+  `reserve_dev`, and production Neon (`ep-dawn-snow-b4dkr9e2`), verified with
+  `migrate:status`. **The build does not migrate** (`docs/DEPLOYMENT.md`: "a
+  build that migrates is a build that can half-migrate"), so any future
+  schema change must be applied by hand or the deployed `/host` 500s on the
+  missing column. `.env.local` is a LOCAL `reserve_dev`, not a Neon branch;
+  production creds live in `.env.production.local`.
 - **A fixture's own state changes get asserted, not assumed.** V-017 lost a
   pass to `hostMove(..., 'completed')` on a `booked` party — not an edge, so
   the setup silently no-opped and the test asserted the opposite of its name.
