@@ -18,6 +18,7 @@ import {
   plusMs,
   renderMessage,
   revert,
+  tableStates,
   transition,
   turnMinutes,
   walkIn,
@@ -29,6 +30,7 @@ import {
   type Rejection,
   type SendPolicy,
   type Status,
+  type TableStateRow,
   type Templates,
   type TurnBands,
 } from '@reserve/core';
@@ -104,6 +106,46 @@ export async function loadFloor(day: string, now: Date): Promise<FloorRow[]> {
       messages: r.messages.map((m) => ({ ...m, kind: m.kind as MessageKind })),
     };
   });
+}
+
+/**
+ * The table board's rows (P0-13): the floor plan, plus everything that holds
+ * a table in this service, handed to the ONE pure function. Table-major, so
+ * it reads nothing `loadFloor` derives and derives nothing `loadFloor` reads.
+ *
+ * The window is deliberately *this* service, not ±24 hours: a `free` whose
+ * free-until is tomorrow's dinner is noise, and the spec's "null for the rest
+ * of service" is what the host actually needs. A party still `seated` past
+ * midnight is kept whatever business day they were booked on — their table is
+ * not free because the date rolled over.
+ */
+export async function loadBoard(day: string, config: FloorConfig, now: Date, horizonMinutes?: number): Promise<TableStateRow[]> {
+  const [plan, held] = await Promise.all([
+    loadPlan(prisma, config.overSeatCap),
+    prisma.reservation.findMany({
+      where: {
+        status: { in: [...HOLDS_TABLES] },
+        startAt: { gt: plusMs(now, -86_400_000) },
+        OR: [{ businessDay: day }, { status: 'seated' }],
+      },
+      select: {
+        id: true,
+        startAt: true,
+        partySize: true,
+        turnMinutes: true,
+        tableIds: true,
+        guestName: true,
+        status: true,
+        events: { where: { toStatus: 'seated' }, orderBy: { id: 'desc' }, take: 1, select: { at: true } },
+      },
+    }),
+  ]);
+  return tableStates(
+    plan,
+    held.map((r) => ({ ...r, start: r.startAt, seated: r.status === 'seated', seatedAt: r.events[0]?.at ?? null })),
+    now,
+    horizonMinutes,
+  );
 }
 
 /**

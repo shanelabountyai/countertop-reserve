@@ -30,6 +30,23 @@ export type FloorPlan = {
 
 export type Unit = { id: string; tableIds: readonly string[]; seats: number; combination: boolean };
 
+/** A unit plus the fields only selection and grouping need. */
+export type PlanUnit = Unit & { minParty: number; section: string };
+
+/**
+ * EVERY unit on the plan, tables then combinations — the board's inventory
+ * list (P0-13) and the set `fittingUnits` filters. A combination takes its
+ * section from its first member table; a combination spanning two sections
+ * is a floor-plan error, not a case to model.
+ */
+export function allUnits(plan: FloorPlan): PlanUnit[] {
+  const sectionOf = (tableId: string | undefined) => plan.tables.find((t) => t.id === tableId)?.section ?? 'unassigned';
+  return [
+    ...plan.tables.map((t) => ({ id: t.id, tableIds: [t.id], seats: t.seats, combination: false, minParty: t.minParty, section: t.section })),
+    ...plan.combinations.map((c) => ({ id: c.id, tableIds: c.tableIds, seats: c.seats, combination: true, minParty: c.minParty, section: sectionOf(c.tableIds[0]) })),
+  ];
+}
+
 /** Turn length bands, ascending by `upToParty`; the last band covers every larger party. */
 export type TurnBands = readonly { upToParty: number; minutes: number }[];
 
@@ -52,11 +69,7 @@ export function turnMinutes(partySize: number, bands: TurnBands = DEFAULT_TURN_B
  * then id for a stable order.
  */
 export function fittingUnits(plan: FloorPlan, partySize: number): Unit[] {
-  const candidates = [
-    ...plan.tables.map((t) => ({ ...t, tableIds: [t.id], combination: false })),
-    ...plan.combinations.map((c) => ({ ...c, combination: true })),
-  ];
-  return candidates
+  return allUnits(plan)
     .filter((u) => partySize <= u.seats && partySize >= u.minParty && u.seats - partySize <= plan.overSeatCap)
     .sort(
       (a, b) =>

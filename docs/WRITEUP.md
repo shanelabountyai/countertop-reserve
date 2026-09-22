@@ -288,6 +288,20 @@ first project's own record of it.
   taken in between is a clean "no table fits" refusal. One text per party
   by constraint.
 
+- **The table board is O(units x holds) per render, recomputed every poll
+  (V-016).** `tableStates` walks every held reservation once per unit, and
+  `/host/board` recomputes the whole board on each 10-second refresh rather
+  than diffing. At one restaurant — tens of units, tens of holds in a
+  service — that is microseconds, and the clarity of a pure function over the
+  whole service is worth more than the arithmetic. A house with hundreds of
+  units would index the holds by table id first.
+- **The reserved-soon horizon is one number for the whole floor (V-016).** A
+  30-minute horizon is right for a deuce and arguably long for a large party
+  whose combination takes longer to reset. Making it a function of party size
+  or unit is a real refinement; making it a host-editable setting is not,
+  because the board's meaning would then differ between two people looking at
+  the same floor.
+
 ## Defects Found
 
 ### From an external code review (2026-09-21)
@@ -624,6 +638,39 @@ Two test defects the review surfaced, which matter more than they look:
   only step that can tell "wrote the new value" from "wrote nothing." Compare
   secrets by fingerprint (`shasum | cut -c1-12`) when you need to know whether
   two values differ without putting either on screen.
+
+### V-016 — two of this item's own bugs, both in the test layer
+
+**The lint ban fired on the item that introduced it.** `tableStates` built
+two `Date`s from millisecond numbers, and the repo's `new Date(string)` ban
+matched them — the rule's selector sees `new Date(<arg>)`, not the argument's
+type. Annoying for a second, right on reflection: both call sites were better
+off with no constructor at all. One became `plusMs(start, turn * 60_000)`,
+the existing helper; the other stopped rebuilding an instant it already had
+and kept the held reservation's own `start` object. The ban did not just
+catch a timezone hazard, it caught two places where the code was
+reconstructing something it was holding.
+
+**The e2e assertion pinned an integer against a live clock.** The board
+rendered `Free for 39 min` where the spec expected 40. The seed writes
+`date_trunc('minute', now()) + interval '40 minutes'`, and `freeMinutes`
+floors — so the seconds that pass between the insert and the render take the
+window to 39-and-a-fraction, which floors to 39.
+
+The tempting fix is to round instead of floor, because then the number
+matches the fixture. That would be the wrong way round. Flooring is the whole
+point: this board exists so a host can check a window against a party's turn,
+and a 39½-minute window that reads as "40 min" tells them a 40-minute turn
+fits when it does not. The rounding direction is a correctness property of
+the feature, not a formatting choice, so the *test* absorbed the drift
+(`/Free for (39|40) min/`) and the floor stayed.
+
+The general lesson is about what a fixture may assert. A spec seeded from the
+database's own clock cannot assert an exact elapsed minute, because the
+render happens at an unknown offset from the seed. It can assert the band, or
+it can freeze the clock — what it must not do is make the product round in a
+direction that suits the assertion.
+
 
 ## Skills Learned / Functions Unlocked
 

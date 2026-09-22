@@ -389,3 +389,44 @@ party gets in *only* because releasing a table puts it back into inventory
 that instant, rather than flagging it for someone to tidy up later. Had we
 used a party of six, they would have found a free table regardless and
 proved nothing at all.
+
+## V-016 — What can I seat these people on?
+
+The book tells a host who is coming. It has never told them what is free.
+
+Those sound like the same question and they are not. The book is a list of
+parties in time order; the floor is a room full of tables, each of them doing
+something. A host standing at the stand with a walk-in in front of them needs
+the second one, and until now the only way to get it was to read the whole
+book and hold the floor plan in their head.
+
+So there is now a table board: every table and every declared combination,
+grouped by section, each saying what it is doing and how long it will be
+doing it.
+
+The requirement that shaped the whole thing is the one that sounds like a
+detail. **A free table has to say how long it is free for.** A green dot is
+not an answer — a two-top that is free right now but booked at 7:40 will not
+hold a party who need ninety minutes, and a board that shows it as simply
+"free" has not helped the host, it has misled them into a conversation they
+will have to walk back. So every free table carries its window: *free for 40
+min, held from 7:40 PM*, or *free for the rest of service* when genuinely
+nothing else is booked on it.
+
+The second thing worth saying is about combinations. Two two-tops pushed
+together to make a four are not a label on a screen; they are a third piece
+of inventory that happens to be made out of the first two. Seat a party at
+the combination and both deuces have to go dark. Seat someone at either deuce
+and the combination has to go dark. The board shows all three as their own
+rows and names what took each one, so a host can never be looking at a
+combination reading "free" while one of its halves has people sitting at it.
+
+And a table whose party is running long stays occupied. Their booked ninety
+minutes ended eight minutes ago; they are still at the table, eating. The
+board says occupied, and says they are past their turn, because the
+alternative — quietly calling it free the moment the clock runs out — is how
+two parties end up standing at the same table.
+
+The board is read-only. Naming a table yourself is the next piece of work,
+and it is the dangerous one: a host choosing a table has to be an *input* to
+the same allocation the app already does, never a way around it.

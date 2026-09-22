@@ -41,7 +41,7 @@ Added after v1 closed. Spec: `prd-countertop-reserve.md` → *Addendum v1.1*.
 Two items, deliberately split so the read-only half can ship and be used
 before any new write path exists.
 
-- [ ] **V-016** — Table board *(P0-13)* — a table-major view of the current
+- [x] **V-016** — Table board *(P0-13)* — a table-major view of the current
   service: `tableStates()` in `packages/core` alongside `availability()`,
   four states (`free` / `occupied` / `reserved_soon` / `blocked`) forced
   exhaustive by the compiler, combinations as their own inventory rows that

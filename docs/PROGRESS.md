@@ -941,3 +941,63 @@ bare `TEST_DATABASE_NAME=reserve_test` shadowed the value CI exports, so
 every destructive fixture refused on the first push — the new guard working
 exactly as intended, against its own author. The scripts supply a default
 now, and an explicit declaration from the environment wins.
+
+## V-016 — The table board
+
+`/host` answers "who is coming tonight". It could never answer "what can I
+seat this walk-in on", because v1 allocates automatically and never shows its
+work: `fit()` computes every fitting unit, `firstUnit()` takes the first that
+survives the constraint, and the host sees `· T3+T4` with none of the
+alternatives. This item is the read-only half of the answer — a table-major
+view of the current service. No new write path; V-017 has that.
+
+**`tableStates(plan, reservations, now, horizon)` in `packages/core`.** Pure,
+`now` a parameter, in its own module beside `availability()`. The two are
+deliberately not implemented in terms of each other — one is slot-major and
+answers "when can a party of N sit", the other is table-major and answers
+"what is this table doing" — but both take occupancy from the same
+`HOLDS_TABLES` list, so there is still one source of the occupied set.
+
+**Four states, and `free` is never bare.** The requirement the item exists
+for: every `free` carries its free-until and the window in minutes. A table
+free now but held at 19:40 is not free for a 90-minute walk-in at 19:00, and
+a green dot that does not say so is worse than no board — it invites exactly
+the seating it cannot support. `occupied` carries who, since when and the
+expected clear; `reserved_soon` a hold inside the horizon that has not
+seated; `blocked` the unit that took it, named.
+
+**Combinations are inventory rows, not a display detail.** A combination gets
+its own row. Committing it puts every member into `blocked` naming the
+combination; committing a member puts the combination into `blocked` naming
+the member. The classification turns on whether a hold's table set *equals*
+the unit's: equal is the unit's own commitment, anything else overlapping is
+a foreign one that blocks it. That one comparison is what stops a combination
+whose member is occupied from ever reading `free`.
+
+**Decisions worth keeping:**
+- **A seated party holds its table until cleared, past its turn or not.** The
+  long-turn fixture is the one that would have been wrong the obvious way:
+  derive occupancy from the hold window alone and a table 8 minutes over
+  reads `free`, which is a double-seat waiting to happen.
+- **Free-until comes from the next hold on ANY member table**, this unit's or
+  another's. A combination booked at 19:40 ends its deuces' free windows too,
+  so a deuce that looks unbooked still says "free for 40 min".
+- **The horizon is the only thing separating `free`-with-a-window from
+  `reserved_soon`.** Not a second rule, not a status — one parameter, so the
+  board's meaning is tunable without new states.
+- **`loadBoard` scopes to THIS service, not ±24 hours.** A free-until landing
+  on tomorrow's dinner is noise; "null for the rest of service" is what the
+  host needs. A party still `seated` past midnight is kept whatever business
+  day they were booked on — a table is not free because the date rolled over.
+- **Reuses P0-9's 10s cursor.** No second poll, no new endpoint.
+
+**Left behind:**
+- No migration. The board reads; nothing about the schema moved.
+- `allUnits()` was factored out of `fittingUnits()` so the board and the
+  selector build the unit list once. `fittingUnits` is now a filter over it.
+- `freeMinutes` floors rather than rounds — a 39½-minute window must not
+  read as 40 to someone deciding whether a 40-minute turn fits.
+- Two lint bans caught this item's own code, correctly: `new Date(number)`
+  matched the `new Date(string)` rule's selector. Both call sites were better
+  off without a `Date` constructor at all — one became `plusMs`, the other
+  kept the held reservation's own `start` object instead of rebuilding it.

@@ -88,6 +88,10 @@ export default async function HostPage({ searchParams }: { searchParams: Promise
         <h1 className="text-3xl font-bold">Floor</h1>
         <p>
           {day === today ? 'Tonight' : day} · {RESTAURANT.restaurant} ·{' '}
+          <a href="/host/board" className="underline">
+            Tables
+          </a>{' '}
+          ·{' '}
           <a href="/host/hours" className="underline">
             Hours
           </a>{' '}
