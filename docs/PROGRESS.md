@@ -1090,3 +1090,11 @@ rule where a silently missing option teaches them nothing.
 - A lingering seated party (past their window, still at the table) borrows
   `walkIn`'s own assumption — gone within one slot — rather than inventing a
   second one. A CHECK refuses a zero-length hold regardless.
+
+V-017 committed at c2b3209. The gate passed on the first run — 821 unit
+tests across 22 files (up 36) and 40 e2e (up 4). The one defect was in this
+item's own test layer and never reached the product: a fixture called
+`hostMove(..., 'completed')` on a `booked` party, which is not an edge, so
+the setup silently no-opped and the assertion recorded the opposite of its
+own name. Written up in `WRITEUP.md` — the rule taken from it is that a
+fixture's own state changes get asserted, not assumed.

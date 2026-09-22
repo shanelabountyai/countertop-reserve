@@ -1,4 +1,4 @@
-# Next: V-017, manual assignment. V-016 is shipped and green.
+# Next: V-018, the restyle. V-017 is shipped and green.
 
 **<https://reserve.labintelligence.co>** — Vercel + Neon, behind one shared
 password (`grep DEMO_ACCESS_PASSWORD .env.production.local` — that file, not
@@ -6,48 +6,40 @@ password (`grep DEMO_ACCESS_PASSWORD .env.production.local` — that file, not
 **the username is ignored**; type anything. `/host` wants a separate
 `STAFF_PASSCODE`. `docs/DEPLOYMENT.md` is the full recipe.
 
-Gate green at V-016: lint, typecheck, **785 unit across 20 files**, build,
-**36 e2e**. Not yet re-run under `TZ=Pacific/Kiritimati` — CI does that on
-push; watch it before calling V-016 closed.
+Gate green at V-017: lint, typecheck, **821 unit across 22 files**, build,
+**40 e2e**. Watch CI before calling V-017 closed — it is the run that applies
+the new migration from scratch and runs the unit suite under two hostile
+timezones.
 
 ## Closed on 2026-09-22
 
-- **V-016 — the table board.** `tableStates()` in `packages/core` beside
-  `availability()`, `loadBoard()` in `packages/db/floor.ts`, the page at
-  `/host/board`, linked from `/host`. Four states; every `free` carries its
-  free-until and the window in minutes; combinations are their own inventory
-  rows that block their members and are blocked by them. 17 hand-calculated
-  fixtures, 4 e2e specs.
-- **Design canvas: <https://claude.ai/artifact/B8MVj7sZQV3XxTCNGMqLNC>** —
-  "Countertop Reserve UI". Six artboards taking Countertop's UI mock as the
-  brand basis (Archivo + Zilla Slab, `#E9E5DF` ground, 3px `#0a0a0a` staff
-  borders, the five semantic colour roles, the 18px staff floor) and drawing
-  Reserve's own screens in it: `/host`, `/host/board`, `/host/design`,
-  `/book`, `/m/[token]`, and the message thread. **Nothing in the repo is
-  styled from it yet** — see the open item below. Source mock lives in the
-  "Fire kitchen" design project.
+- **V-016 — the table board.** Confirmed green in CI (run 35743892471).
+- **V-017 — manual assignment.** `unitMisfit()` in `packages/core` beside
+  `fittingUnits()`, `assignUnit()` in `packages/db/floor.ts` routed through
+  the exported `fit()`, the picker on each `/host` row. One migration:
+  `ReservationEvent.fromTableIds`, which is how the undo of a move knows
+  where to put the party back. 36 new unit tests, 4 new e2e.
 
 ## Pick up here
 
-**V-017 — manual assignment** (`docs/backlog.md` → Phase 5, spec in the PRD
-addendum). The correctness-critical half, and the most dangerous feature in
-the product: a host naming a table is an **input** to the same allocation
-transaction — the same advisory lock, the same schedule re-read under the
-lock, the same constraint — never a bypass of it. `firstUnit(units)` becomes
-"this unit, if it is in `units`"; a unit outside the fitting set is refused
-with a named reason (`too_large`, `too_small`, `unit_held`, `outside_hours`,
-`over_seat_cap`), never forced.
+**V-018 — the restyle.** The approved design canvas is
+<https://claude.ai/artifact/B8MVj7sZQV3XxTCNGMqLNC> ("Countertop Reserve UI",
+six artboards; source mock in the "Fire kitchen" design project). **Nothing
+in the repo is styled from it yet.** It touches all six screens — `/host`,
+`/host/board`, `/host/design`, `/book`, `/m/[token]`, the message thread —
+and every axe assertion has to stay green, including the new picker on the
+host row (`aria-label="Table for <name>"`).
 
-Already resolved at spec time, do not re-open: a `seated` party **may** be
-moved, and the turn window **carries** from the original seat event rather
-than restarting — so the new unit must be free for the remainder only, and a
-move at 19:20 off a 19:00/90-minute seat needs 19:20–20:30.
+It is not yet a backlog item: add the `V-018` row to `docs/backlog.md` in the
+same commit that starts it.
 
-Recommend **Opus**.
+Recommend **Sonnet** — it is presentation work against an approved design,
+not a correctness problem.
 
-**Open, needs your call: the restyle.** The design canvas above is approved
-as a design but not implemented. It is its own item (V-018) — it touches all
-six screens and has to keep every axe assertion green. Do V-017 first.
+**Then: project closure.** The backlog is empty after V-018. Closure needs
+all three of `docs/DEMO.md` refreshed (every command run once), the
+exec-brief artifact, and the LinkedIn drafts in the Ledger — see the global
+CLAUDE.md "Definition of done".
 
 ## Things a future session still trips on
 
@@ -56,6 +48,14 @@ six screens and has to keep every axe assertion green. Do V-017 first.
   history. Identify a database by its **endpoint** instead — this project is
   `ep-dawn-snow-b4dkr9e2` (`c-6.us-east-2`), Countertop is
   `ep-empty-dream-a5px6wnr` (`us-east-2`).
+- **The new migration has NOT been applied to the Neon dev branch.** Only
+  `db:migrate:test` ran locally. `npm run db:migrate:all` before the next
+  demo against dev; production deploy is its own deliberate command.
+- **A fixture's own state changes get asserted, not assumed.** V-017 lost a
+  pass to `hostMove(..., 'completed')` on a `booked` party — not an edge, so
+  the setup silently no-opped and the test asserted the opposite of its name.
+- **`booked → completed` is not an edge.** A party must be `seated` before
+  they can be cleared. `cancelled` is the way to free a booked party's table.
 - **`perl -pi` rewrites a file whether or not it substitutes anything.** A
   zero-match run updates the mtime and looks exactly like success. This cost
   two irreversible Neon resets. Match `[^@]*`, never a class enumerating what
@@ -64,18 +64,19 @@ six screens and has to keep every axe assertion green. Do V-017 first.
   length check cannot tell rotated from unrotated. The `psql` connection is
   the only decisive check, which is why it runs *before* Vercel.
 - **The `new Date(string)` lint ban also matches `new Date(<number>)`.** The
-  selector sees the call, not the argument's type. This is a feature: both
-  times it fired in V-016 the code was rebuilding an instant it already held.
-  Reach for `plusMs`, or keep the `Date` you already have.
+  selector sees the call, not the argument's type. Reach for `plusMs`, or
+  keep the `Date` you already have.
 - **A fixture seeded from the database's clock cannot assert an exact
-  elapsed minute.** The render happens an unknown number of seconds after the
-  insert, and `freeMinutes` floors. Assert the band (`/(39|40) min/`) or
-  freeze the clock — never make the product round to suit the assertion.
+  elapsed minute.** Assert the band (`/(39|40) min/`) or freeze the clock —
+  never make the product round to suit the assertion.
 - **Tests refuse to run unless the environment NAMES the database they may
   wipe.** `TEST_DATABASE_NAME=reserve_test` is set by `npm test` and
   `npm run test:e2e`; CI sets `reserve_ci`.
 - **Playwright no longer reuses a running server.** Stop `npm run dev:demo`
   before a sweep, or set `E2E_REUSE_SERVER=1` and own that choice.
+- **Each e2e spec seeds its own `ServicePeriod` rows** and truncates them
+  first. `assign.spec.ts` sorts before `board.spec.ts`, so it cannot inherit
+  another spec's hours.
 - **`fit` re-reads the schedule from the database** under a shared advisory
   lock. A DB test passing an in-memory `Schedule` must also call
   `seedSchedule(...)` from `packages/db/testing`, or every slot is `closed`.
