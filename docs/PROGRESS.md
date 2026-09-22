@@ -1001,3 +1001,12 @@ whose member is occupied from ever reading `free`.
   matched the `new Date(string)` rule's selector. Both call sites were better
   off without a `Date` constructor at all — one became `plusMs`, the other
   kept the held reservation's own `start` object instead of rebuilding it.
+
+V-016 committed at 6a5898d. The gate needed three runs and both failures were
+in this item's own test layer, not the product: the `new Date(string)` lint
+ban matched `new Date(<number>)` at two call sites (both better off with
+`plusMs` and with the reservation's own `start` object), and an e2e assertion
+pinned an exact 40 against a live clock where `freeMinutes` correctly floors
+to 39. Written up in `WRITEUP.md` — the second one is the interesting half,
+because rounding instead of flooring would have made the fixture pass and the
+board lie.
