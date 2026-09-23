@@ -6,6 +6,7 @@
 // another night. Both callers pick a slot by restaurant-local minute-of-day,
 // and both land on a confirm step before anything is written.
 import type { Availability, DayReason, SlotReason } from '@reserve/core';
+import { Notice } from './notice';
 import { clock } from '@/lib/guest';
 
 const SLOT_REASON: Record<SlotReason, string> = {
@@ -41,20 +42,18 @@ export function SlotGrid({
   // No slots at all: the party does not fit any table, or the restaurant is
   // shut that day. There is nothing to show but the reason.
   if (availability.slots.length === 0) {
-    return (
-      <p className="rounded-lg border-2 border-neutral-400 bg-neutral-100 px-4 py-3">{DAY_REASON[availability.reason ?? 'closed']}</p>
-    );
+    return <Notice tone="quiet">{DAY_REASON[availability.reason ?? 'closed']}</Notice>;
   }
   const periods = [...new Set(availability.slots.map((s) => s.period))];
   return (
     <div className="flex flex-col gap-5">
       {/* Every seating is taken, but the times themselves still go on screen. */}
       {availability.reason === null ? null : (
-        <p className="rounded-lg border-2 border-neutral-400 bg-neutral-100 px-4 py-3">{DAY_REASON[availability.reason]}</p>
+        <Notice tone="quiet">{DAY_REASON[availability.reason]}</Notice>
       )}
       {periods.map((period) => (
         <section key={period} aria-labelledby={`period-${period}`}>
-          <h3 id={`period-${period}`} className="text-lg font-semibold">
+          <h3 id={`period-${period}`} className="font-display text-2xl font-bold">
             {period}
           </h3>
           <ul className="mt-2 flex flex-wrap gap-2">
@@ -65,16 +64,16 @@ export function SlotGrid({
                   {s.bookable ? (
                     <a
                       href={href(s.minute)}
-                      className="flex min-h-12 min-w-24 items-center justify-center rounded-lg bg-neutral-900 px-4 font-semibold tabular-nums text-white"
+                      className="flex min-h-14 min-w-24 items-center justify-center border-2 border-stone-900 bg-white px-4 font-bold tabular-nums text-stone-900 hover:bg-stone-900 hover:text-white"
                     >
                       {clock(s.minute, timezone, day)}
                     </a>
                   ) : (
                     // Not a disabled <button>: there is no form here, and the
                     // reason has to reach a screen reader, not just an eye.
-                    <span className="flex min-h-12 min-w-24 flex-col items-center justify-center rounded-lg border-2 border-dashed border-neutral-400 px-4 text-neutral-600">
-                      <span className="font-semibold tabular-nums line-through">{clock(s.minute, timezone, day)}</span>
-                      <span className="text-xs">{SLOT_REASON[s.reason]}</span>
+                    <span className="flex min-h-14 min-w-24 flex-col items-center justify-center border border-stone-300 bg-stone-100 px-4 text-stone-600">
+                      <span className="font-bold tabular-nums line-through">{clock(s.minute, timezone, day)}</span>
+                      <span className="text-xs font-extrabold tracking-wider uppercase">{SLOT_REASON[s.reason]}</span>
                     </span>
                   )}
                 </li>

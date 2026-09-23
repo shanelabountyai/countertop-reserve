@@ -1,4 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
+import { STATUSES } from '@reserve/core';
 import { expect, test, type Page } from '@playwright/test';
 import { Client } from 'pg';
 
@@ -138,4 +139,23 @@ test('walk-ins from the same screen: seated when a table is free, waitlisted wit
   await expect(page.getByText('"Table ready" text sent.')).toBeVisible();
   await expect(kim).toContainText('"Table ready" texted.');
   await expect(kim.getByRole('button', { name: 'Text: table ready' })).toHaveCount(0);
+});
+
+// V-018. The sheet's value is that it is generated, not drawn: it lists the
+// lifecycle module's statuses and the board's own state map, so a status
+// added without a token, or a token changed without the sheet, shows here.
+test('the design sheet renders every status and table state from the modules, and is axe-clean', async ({ page }) => {
+  await signIn(page);
+  await page.goto('/host/design');
+  await expect(page.getByRole('heading', { name: 'Design', level: 1 })).toBeVisible();
+
+  const statuses = page.getByRole('region', { name: /Reservation status/ }).getByRole('listitem');
+  await expect(statuses).toHaveCount(STATUSES.length);
+  for (const s of STATUSES) await expect(statuses.filter({ hasText: s }).first()).toBeVisible();
+
+  const states = page.getByRole('region', { name: /Table state/ }).getByRole('listitem');
+  await expect(states).toHaveCount(4);
+
+  const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+  expect(results.violations).toEqual([]);
 });

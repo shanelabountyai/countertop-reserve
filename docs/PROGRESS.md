@@ -1098,3 +1098,64 @@ item's own test layer and never reached the product: a fixture called
 the setup silently no-opped and the assertion recorded the opposite of its
 own name. Written up in `WRITEUP.md` — the rule taken from it is that a
 fixture's own state changes get asserted, not assumed.
+
+---
+
+## V-018 — The restyle
+
+The approved canvas (`Countertop Reserve UI`, six artboards) applied to every
+screen. Presentation only: no behaviour, no copy, no schema.
+
+**The palette was already Tailwind's, which is what made this cheap.** The
+canvas is drawn in `#1c1917` / `#57534e` / `#d6d3d1` / `#b91c1c` / `#f59e0b` /
+`#0369a1` / `#166534` — every one of them a Tailwind default (`stone-900`,
+`stone-600`, `stone-300`, `red-700`, `amber-500`, `sky-700`, `green-800`). So
+the bulk of the item was a mechanical swap of the *cool* `neutral-*` ramp for
+the *warm* `stone-*` one, and the four values Tailwind has no name for became
+theme tokens: `--color-ground` (`#e9e5df`, the room behind the app),
+`--color-surface` (`#fffdf9`, the app's own canvas), `--color-ink` (`#0a0a0a`,
+card borders and the staff chrome), and `--font-display` (Zilla Slab).
+
+**Square corners are enforced twice on purpose.** Every `rounded-*` class was
+stripped from the markup *and* every `--radius-*` is zeroed in `@theme`. The
+strip keeps the markup honest; the zero means a future `rounded-lg` typed from
+muscle memory cannot reintroduce a curve that nothing reviews.
+
+**Fonts are `next/font/google`, not a stylesheet `<link>`.** Archivo and Zilla
+Slab are fetched at build time and self-hosted, so a host on the floor is
+never one Google round-trip away from an unstyled book.
+
+**One chrome, five screens.** `app/host/chrome.tsx` is the black bar — brand,
+tabs, and the live count a host reads at a glance. It is the page's
+`<header>`, which is also what keeps `board.spec`'s "the banner states how
+many tables are free" assertion pointing at one element rather than two.
+
+**Three things were extracted rather than duplicated**, because the alternative
+was the same values written twice:
+- `app/notice.tsx` — the callout, four tones, used by `/host`, `/book`,
+  `/m/[token]`, `/host/hours` and the slot grid's day-level refusals.
+- `app/host/table-state.ts` — the board's four-state map, moved out of the
+  board page so `/host/design` renders *the same object* the floor does.
+- the chrome, above.
+
+**`/host/design` is new, and is generated rather than drawn.** Its status
+chips come from `STATUSES` and `holdsTables` in the lifecycle module, and its
+table-state cards from the board's map — so a tenth status appears on the
+sheet the day it compiles, and a token changed on the board without the sheet
+is impossible rather than merely discouraged. `host.spec` asserts the counts
+against the modules, so the sheet cannot quietly stop listing everything.
+
+**Left behind / deliberately not done:**
+- The canvas's **message thread** artboard (every message on a booking,
+  inbound replies included) is not built. `loadManage` takes `take: 1` by
+  design — the newest message supersedes, and the doc comment reasons about
+  exactly that — so a thread needs it to return the whole log *and* the
+  inbound rows merged in. That is a feature with its own tests, not a
+  restyle. What shipped is the existing "last text we sent you" in the
+  thread's visual language: the stored body, with its kind and length under
+  a rule, which is the snapshot rule made visible.
+- The canvas's `/host` heading reads **Tonight**; the screen keeps **Floor**
+  and carries the date in the meta line beside it. Renaming a screen is not a
+  restyle, and two specs name the heading.
+- `docs/screenshots/` was regenerated — the six shots were of the old look
+  and `WRITEUP.md` links every one of them.

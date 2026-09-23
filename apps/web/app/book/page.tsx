@@ -12,6 +12,7 @@
 import { dayOf, lastBookableDay } from '@reserve/core';
 import { dayAvailability } from '@reserve/db/guest';
 import { NOTE_MAX, TAG_KINDS } from '@reserve/core';
+import { Notice } from '../notice';
 import { book } from './actions';
 import { SlotGrid } from '../slot-grid';
 import { CONSENT, isDay, MAX_PARTY, clock, guestConfig, parseParty, parseSlot } from '@/lib/guest';
@@ -63,29 +64,32 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
   const config = await guestConfig();
 
   const step = (n: number, label: string, done: boolean) => (
-    <li className={done ? 'font-semibold text-neutral-950' : 'text-neutral-500'}>
+    <li className={done ? 'font-extrabold text-stone-900' : 'text-stone-600'}>
       {n}. {label}
     </li>
   );
 
   return (
-    <main className="mx-auto max-w-2xl p-4 text-lg text-neutral-950">
-      <header className="flex flex-wrap items-baseline justify-between gap-2">
-        <h1 className="text-3xl font-bold">Book a table</h1>
-        <p className="text-neutral-700">{RESTAURANT.restaurant}</p>
+    <main className="mx-auto max-w-2xl bg-surface text-lg text-stone-900">
+      <header className="bg-ink px-6 py-8 text-white">
+        <p className="text-xs font-bold tracking-[0.18em] text-stone-300 uppercase">{RESTAURANT.restaurant} · {RESTAURANT.phone}</p>
+        <h1 className="mt-3 font-display text-4xl leading-tight font-bold">Book a table.</h1>
+        <p className="mt-3 text-stone-200">We hold it for the whole turn and text you to confirm. Reply C and you&rsquo;re set.</p>
       </header>
-      <ol className="mt-2 flex gap-4 text-sm">
+
+      <div className="p-6">
+      <ol className="flex gap-4 text-sm font-bold tracking-widest uppercase">
         {step(1, 'Party', party !== null)}
         {step(2, 'Date', day !== '')}
         {step(3, 'Time', at !== null)}
       </ol>
 
       <div aria-live="polite" className="mt-3 min-h-8">
-        {notice ? <p className="rounded-lg border-2 border-neutral-800 bg-yellow-100 px-4 py-2 font-semibold">{notice}</p> : null}
+        {notice ? <Notice tone="danger">{notice}</Notice> : null}
       </div>
 
       <section aria-labelledby="party" className="mt-2">
-        <h2 id="party" className="text-2xl font-bold">
+        <h2 id="party" className="font-display text-2xl font-bold">
           How many people?
         </h2>
         <ul className="mt-2 flex flex-wrap gap-2">
@@ -95,8 +99,8 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
               <a
                 href={`/book?party=${n}${day === '' ? '' : `&day=${day}`}`}
                 aria-current={n === party ? 'true' : undefined}
-                className={`flex min-h-12 min-w-12 items-center justify-center rounded-lg px-3 font-semibold tabular-nums ${
-                  n === party ? 'bg-neutral-900 text-white' : 'border-2 border-neutral-800'
+                className={`flex min-h-12 min-w-12 items-center justify-center px-3 font-bold tabular-nums ${
+                  n === party ? 'bg-ink text-white' : 'border-2 border-stone-900 bg-white'
                 }`}
               >
                 {n}
@@ -104,12 +108,12 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
             </li>
           ))}
         </ul>
-        <p className="mt-2 text-sm text-neutral-700">Parties over {MAX_PARTY}: please call {RESTAURANT.phone}.</p>
+        <p className="mt-2 text-base text-stone-600">Parties over {MAX_PARTY}: please call {RESTAURANT.phone}.</p>
       </section>
 
       {party === null ? null : (
         <section aria-labelledby="date" className="mt-6">
-          <h2 id="date" className="text-2xl font-bold">
+          <h2 id="date" className="font-display text-2xl font-bold">
             Which day?
           </h2>
           {/* Native date input: the platform's own calendar, keyboard and locale. */}
@@ -126,9 +130,9 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
               defaultValue={day || today}
               min={today}
               max={lastBookableDay(now, TZ)}
-              className="min-h-12 rounded-lg border-2 border-neutral-800 px-3"
+              className="min-h-12 border-2 border-stone-900 bg-white px-3"
             />
-            <button type="submit" className="min-h-12 rounded-lg bg-neutral-900 px-6 font-semibold text-white">
+            <button type="submit" className="min-h-12 bg-red-700 px-6 font-extrabold text-white">
               See times
             </button>
           </form>
@@ -137,7 +141,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
 
       {party === null || day === '' ? null : (
         <section aria-labelledby="time" className="mt-6">
-          <h2 id="time" className="text-2xl font-bold">
+          <h2 id="time" className="font-display text-2xl font-bold">
             What time?
           </h2>
           <div className="mt-2">
@@ -152,8 +156,8 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
       )}
 
       {at === null || party === null ? null : (
-        <section aria-labelledby="who" className="mt-8 rounded-xl border-2 border-neutral-800 p-4">
-          <h2 id="who" className="text-2xl font-bold">
+        <section aria-labelledby="who" className="mt-8 border-[3px] border-ink bg-white p-5">
+          <h2 id="who" className="font-display text-2xl font-bold">
             Party of {party} on {day} at {clock(Number(get('at')), TZ, day)}
           </h2>
           <form action={book} className="mt-3 flex flex-col gap-4">
@@ -164,12 +168,12 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
             <input type="hidden" name="key" value={crypto.randomUUID()} />
 
             <label className="flex flex-col gap-1">
-              <span className="font-semibold">Name</span>
-              <input name="guestName" required maxLength={80} autoComplete="name" className="min-h-12 rounded-lg border-2 border-neutral-800 px-3" />
+              <span className="text-sm font-extrabold tracking-widest text-stone-600 uppercase">Name</span>
+              <input name="guestName" required maxLength={80} autoComplete="name" className="min-h-12 border-2 border-stone-900 bg-white px-3" />
             </label>
 
             <label className="flex flex-col gap-1">
-              <span className="font-semibold">Mobile number</span>
+              <span className="text-sm font-extrabold tracking-widest text-stone-600 uppercase">Mobile number</span>
               {/* E.164 validated BEFORE submit by the browser itself (P0-12),
                   and again by invalidGuestField on the server, which is the
                   one that decides. The pattern is isE164's, spelled for HTML. */}
@@ -182,43 +186,44 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
                 pattern="\+[1-9][0-9]{1,14}"
                 placeholder="+15035550123"
                 title="Include the country code, like +15035550123"
-                className="min-h-12 rounded-lg border-2 border-neutral-800 px-3"
+                className="min-h-12 border-2 border-stone-900 bg-white px-3"
               />
-              <span className="text-sm text-neutral-700">Full international form, starting with +.</span>
+              <span className="text-base text-stone-600">Full international form, starting with +.</span>
             </label>
 
             <label className="flex flex-col gap-1">
-              <span className="font-semibold">
-                Anything we should know? <span className="font-normal text-neutral-700">(optional)</span>
+              <span className="text-sm font-extrabold tracking-widest text-stone-600 uppercase">
+                Anything we should know? <span className="font-semibold">(optional)</span>
               </span>
-              <textarea name="note" maxLength={NOTE_MAX} rows={2} className="rounded-lg border-2 border-neutral-800 px-3 py-2" />
-              <span className="text-sm text-neutral-700">Up to {NOTE_MAX} characters.</span>
+              <textarea name="note" maxLength={NOTE_MAX} rows={2} className="border-2 border-stone-900 bg-white px-3 py-2" />
+              <span className="text-base text-stone-600">Up to {NOTE_MAX} characters.</span>
             </label>
 
             <fieldset className="flex flex-col gap-2">
-              <legend className="font-semibold">Tags (optional)</legend>
+              <legend className="text-sm font-extrabold tracking-widest text-stone-600 uppercase">Tags (optional)</legend>
               {TAG_KINDS.map((tag) => (
                 <label key={tag} className="flex min-h-12 items-center gap-3">
-                  <input type="checkbox" name="tags" value={tag} className="size-6" />
+                  <input type="checkbox" name="tags" value={tag} className="size-6 accent-red-700" />
                   {TAG_LABEL[tag]}
                 </label>
               ))}
             </fieldset>
 
-            <label className="flex min-h-12 items-start gap-3">
+            <label className="flex min-h-12 items-start gap-3 border-2 border-stone-900 p-3">
               {/* Unticked by default, and the wording is stored verbatim with
                   the booking (P0-8) — a later edit to this sentence cannot
                   rewrite what this guest agreed to. */}
-              <input type="checkbox" name="consent" className="mt-1 size-6" />
+              <input type="checkbox" name="consent" className="mt-1 size-6 accent-red-700" />
               <span>{CONSENT}</span>
             </label>
 
-            <button type="submit" className="min-h-12 rounded-lg bg-neutral-900 px-6 font-semibold text-white">
+            <button type="submit" className="min-h-12 bg-red-700 px-6 font-extrabold text-white">
               Book this table
             </button>
           </form>
         </section>
       )}
+      </div>
     </main>
   );
 }

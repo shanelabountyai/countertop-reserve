@@ -63,6 +63,16 @@ before any new write path exists.
   both ways. Concurrency test on one unit: exactly one assignment, one clean
   refusal. Snapshot regression: assign, move, re-assign, then assert stored
   messages are byte-identical.
+- [x] **V-018** — The restyle — the approved design canvas applied to every
+  screen: Archivo over Zilla Slab, the `#E9E5DF` ground and `#FFFDF9`
+  surface, square corners, 3px ink card borders, and the five semantic
+  colour roles (danger / attention / fresh / settled / hairline) carrying
+  meaning that words already carry — never colour alone. One staff chrome
+  shared by the four host screens. `/host/design` is new: the token and
+  primitive sheet, rendered from the same classes the screens use, so a
+  drifted token is visible rather than argued about. Every axe assertion
+  stays green, the 18px staff floor and 48px target floor stay asserted,
+  and no copy changes — this item may not touch behaviour.
 
 ## Deferred by decision (not backlog)
 

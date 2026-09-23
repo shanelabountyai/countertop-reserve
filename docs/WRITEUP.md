@@ -302,6 +302,29 @@ first project's own record of it.
   because the board's meaning would then differ between two people looking at
   the same floor.
 
+- **The restyle is a theme, not a design system (V-018).** Four tokens
+  (`--color-ground`, `--color-surface`, `--color-ink`, `--font-display`) plus
+  Tailwind's own `stone`/`red-700`/`amber-500`/`sky-700`/`green-800` scales,
+  and the rest is utility classes on each page. There is no component library
+  — `Notice` and `Chrome` are the only two extracted pieces, and they were
+  extracted because the same values were about to be written a fourth time,
+  not on principle. A second brand would need real componentisation; one
+  restaurant does not.
+- **`/host/design` is generated from two modules, not three (V-018).** It
+  derives its statuses from the lifecycle module and its table states from
+  the board's map, so those cannot drift. The colour roles, the type ramp and
+  the button set are still *listed* on the sheet — a button restyled on
+  `/host` without touching the sheet would leave the sheet lying. Closing
+  that needs the buttons to be components, which is the componentisation
+  above; the sheet is honest about which half is generated.
+- **The canvas's message thread is undrawn (V-018).** `loadManage` returns
+  the newest message (`take: 1`) because a change supersedes rather than
+  appends. Rendering the thread the design shows — every outbound message,
+  with the guest's inbound replies interleaved — needs the full log plus the
+  `InboundMessage` rows merged by time, which is a feature and would carry
+  its own snapshot-regression assertions. Deferred deliberately; V-018 was
+  scoped as presentation and touching the loader would have made it not that.
+
 ## Defects Found
 
 ### From an external code review (2026-09-21)

@@ -12,6 +12,7 @@
 // the same machinery the SMS keywords drive.
 import { notFound } from 'next/navigation';
 import { guestDayAvailability, loadManage } from '@reserve/db/guest';
+import { Notice } from '../../notice';
 import { SlotGrid } from '../../slot-grid';
 import { cancel, change, confirm } from './actions';
 import { isDay, MAX_PARTY, clock, guestConfig, parseParty, parseSlot } from '@/lib/guest';
@@ -58,6 +59,14 @@ const STATUS_LABEL: Record<string, string> = {
   abandoned: 'Closed',
 };
 
+/** The chip agrees with the word; it never carries the meaning on its own. */
+const STATUS_TONE: Record<string, string> = {
+  booked: 'bg-amber-900',
+  confirmed: 'bg-green-800',
+  seated: 'bg-green-800',
+  waitlisted: 'bg-sky-800',
+};
+
 type Params = Record<string, string | string[] | undefined>;
 
 export default async function ManagePage({
@@ -97,53 +106,67 @@ export default async function ManagePage({
   const at = picking ? parseSlot(day, get('at'), TZ) : null;
 
   return (
-    <main className="mx-auto max-w-2xl p-4 text-lg text-neutral-950">
-      <header>
-        <h1 className="text-3xl font-bold">Your reservation</h1>
-        <p className="text-neutral-700">{RESTAURANT.restaurant}</p>
-      </header>
-
-      <div aria-live="polite" className="mt-3 min-h-8">
-        {notice ? <p className="rounded-lg border-2 border-neutral-800 bg-yellow-100 px-4 py-2 font-semibold">{notice}</p> : null}
-      </div>
-
-      <section aria-labelledby="details" className="rounded-xl border-2 border-neutral-800 p-4">
-        <h2 id="details" className="text-2xl font-bold">
+    <main className="mx-auto max-w-2xl bg-surface text-lg text-stone-900">
+      <header className="bg-ink px-6 py-8 text-white">
+        <p className="text-xs font-bold tracking-[0.18em] text-stone-300 uppercase">Your table · {RESTAURANT.restaurant}</p>
+        <h1 className="mt-3 font-display text-4xl leading-tight font-bold">
           {fmt.format(r.startAt).replace(/ /g, ' ')}
-        </h2>
-        <p className="mt-1">
+        </h1>
+        <p className="mt-2 text-stone-200">
           Party of {r.partySize} · {r.guestName}
         </p>
-        <p className="mt-1 font-semibold">{STATUS_LABEL[r.status] ?? r.status}</p>
-        {r.note ? <p className="mt-2 text-neutral-700">Note: {r.note}</p> : null}
-        {r.tags.length > 0 ? <p className="mt-1 text-neutral-700">Tags: {r.tags.join(', ')}</p> : null}
-        {r.texts ? null : <p className="mt-2 text-neutral-700">You are not signed up for texts about this booking.</p>}
+        <p className={`mt-4 inline-block px-3 py-1.5 text-base font-extrabold tracking-widest uppercase ${STATUS_TONE[r.status] ?? 'bg-stone-600'}`}>
+          {STATUS_LABEL[r.status] ?? r.status}
+        </p>
+      </header>
+
+      <div className="p-6">
+      <div aria-live="polite" className="min-h-8">
+        {notice ? <Notice>{notice}</Notice> : null}
+      </div>
+
+      <section aria-labelledby="details" className="border-2 border-stone-900 bg-white p-5">
+        <h2 id="details" className="text-sm font-extrabold tracking-widest text-stone-600 uppercase">
+          What we have
+        </h2>
+        {r.note ? <p className="mt-2">Note: {r.note}</p> : null}
+        {r.tags.length > 0 ? <p className="mt-1">Tags: {r.tags.join(', ')}</p> : null}
+        <p className="mt-2 text-stone-600">
+          {r.texts ? 'Texts are on for this booking.' : 'You are not signed up for texts about this booking.'}
+        </p>
       </section>
 
       {r.latestMessage ? (
-        <section aria-labelledby="last-text" className="mt-4">
-          <h2 id="last-text" className="text-xl font-bold">
+        <section aria-labelledby="last-text" className="mt-6">
+          <h2 id="last-text" className="text-sm font-extrabold tracking-widest text-stone-600 uppercase">
             Last text we sent you
           </h2>
           {/* The stored, rendered body — never re-rendered from a template
               (the snapshot rule). A change queues a newer one, and that newer
               row is what shows here from then on. */}
-          <p className="mt-1 rounded-lg bg-neutral-100 px-4 py-3">{r.latestMessage.body}</p>
+          <div className="mt-2 max-w-md border-2 border-stone-900 bg-white p-4">
+            <p>{r.latestMessage.body}</p>
+            {/* The delivery meta the canvas puts under every bubble: this is
+                the stored body, not a re-render, and its length proves it. */}
+            <p className="mt-2 border-t border-stone-300 pt-2 font-mono text-xs text-stone-600">
+              {r.latestMessage.kind} · {r.latestMessage.body.length} chars · stored as sent
+            </p>
+          </div>
           {r.latestMessage.status === 'failed' ? (
-            <p className="mt-1 font-semibold text-red-800">We could not deliver this text, so treat this page as the record.</p>
+            <p className="mt-2 font-bold text-red-700">We could not deliver this text, so treat this page as the record.</p>
           ) : null}
         </section>
       ) : null}
 
       {!r.actionable ? (
-        <p className="mt-6 rounded-lg border-2 border-neutral-400 bg-neutral-100 px-4 py-3">
-          There is nothing left to change here. Please call {RESTAURANT.phone} if you need us.
-        </p>
+        <div className="mt-6">
+          <Notice tone="quiet">There is nothing left to change here. Please call {RESTAURANT.phone} if you need us.</Notice>
+        </div>
       ) : (
         <>
           {r.status === 'booked' ? (
             <section aria-labelledby="confirm" className="mt-6">
-              <h2 id="confirm" className="text-2xl font-bold">
+              <h2 id="confirm" className="font-display text-2xl font-bold">
                 Confirm it
               </h2>
               {/* The confirmation path for a guest who declined texts: their
@@ -151,14 +174,14 @@ export default async function ManagePage({
                   No deadline is quoted here on purpose — the sweep releases
                   only bookings it actually asked, so quoting one to a guest
                   we never texted would be a threat we do not carry out. */}
-              <p className="mt-1 text-neutral-700">
+              <p className="mt-1 text-stone-600">
                 {r.texts
                   ? 'You can confirm here instead of replying to our text.'
                   : 'You asked us not to text you, so confirm here and we will know to expect you.'}
               </p>
               <form action={confirm} className="mt-2">
                 <input type="hidden" name="token" value={r.token} />
-                <button type="submit" className="min-h-12 rounded-lg border-2 border-neutral-800 bg-neutral-900 px-6 font-semibold text-white">
+                <button type="submit" className="min-h-12 bg-green-800 px-6 font-extrabold text-white">
                   Confirm this reservation
                 </button>
               </form>
@@ -166,7 +189,7 @@ export default async function ManagePage({
           ) : null}
 
           <section aria-labelledby="change" className="mt-6">
-            <h2 id="change" className="text-2xl font-bold">
+            <h2 id="change" className="font-display text-2xl font-bold">
               Change it
             </h2>
             {picking ? (
@@ -174,8 +197,8 @@ export default async function ManagePage({
                 <form method="get" action={`/m/${r.token}`} className="mt-2 flex flex-wrap items-end gap-3">
                   <input type="hidden" name="change" value="1" />
                   <label className="flex flex-col gap-1">
-                    <span className="font-semibold">Party</span>
-                    <select name="party" defaultValue={party} className="min-h-12 rounded-lg border-2 border-neutral-800 px-3">
+                    <span className="text-sm font-extrabold tracking-widest text-stone-600 uppercase">Party</span>
+                    <select name="party" defaultValue={party} className="min-h-12 border-2 border-stone-900 bg-white px-3">
                       {Array.from({ length: MAX_PARTY }, (_, i) => i + 1).map((n) => (
                         <option key={n} value={n}>
                           {n}
@@ -184,10 +207,10 @@ export default async function ManagePage({
                     </select>
                   </label>
                   <label className="flex flex-col gap-1">
-                    <span className="font-semibold">Day</span>
-                    <input type="date" name="day" defaultValue={day} className="min-h-12 rounded-lg border-2 border-neutral-800 px-3" />
+                    <span className="text-sm font-extrabold tracking-widest text-stone-600 uppercase">Day</span>
+                    <input type="date" name="day" defaultValue={day} className="min-h-12 border-2 border-stone-900 bg-white px-3" />
                   </label>
-                  <button type="submit" className="min-h-12 rounded-lg border-2 border-neutral-800 px-6 font-semibold">
+                  <button type="submit" className="min-h-12 border-2 border-stone-600 bg-white px-6 font-bold">
                     See times
                   </button>
                 </form>
@@ -202,14 +225,14 @@ export default async function ManagePage({
               </>
             ) : (
               <p className="mt-2">
-                <a href={`/m/${r.token}?change=1`} className="inline-flex min-h-12 items-center rounded-lg border-2 border-neutral-800 px-6 font-semibold">
+                <a href={`/m/${r.token}?change=1`} className="inline-flex min-h-12 items-center border-2 border-stone-900 bg-white px-6 font-bold">
                   Pick a different time
                 </a>
               </p>
             )}
 
             {at === null ? null : (
-              <form action={change} className="mt-4 rounded-xl border-2 border-neutral-800 p-4">
+              <form action={change} className="mt-4 border-[3px] border-ink bg-white p-5">
                 <input type="hidden" name="token" value={r.token} />
                 <input type="hidden" name="party" value={party} />
                 <input type="hidden" name="day" value={day} />
@@ -217,10 +240,10 @@ export default async function ManagePage({
                 <p className="font-semibold">
                   Move to party of {party} on {day} at {clock(Number(get('at')), TZ, day)}?
                 </p>
-                <p className="mt-1 text-neutral-700">
+                <p className="mt-1 text-stone-600">
                   Your current table is held until you submit. If the new time has gone by then, nothing changes.
                 </p>
-                <button type="submit" className="mt-3 min-h-12 rounded-lg bg-neutral-900 px-6 font-semibold text-white">
+                <button type="submit" className="mt-3 min-h-12 bg-ink px-6 font-extrabold text-white">
                   Move my reservation
                 </button>
               </form>
@@ -228,18 +251,19 @@ export default async function ManagePage({
           </section>
 
           <section aria-labelledby="cancel" className="mt-8">
-            <h2 id="cancel" className="text-2xl font-bold">
+            <h2 id="cancel" className="font-display text-2xl font-bold">
               Cancel it
             </h2>
             <form action={cancel} className="mt-2">
               <input type="hidden" name="token" value={r.token} />
-              <button type="submit" className="min-h-12 rounded-lg border-2 border-red-800 px-6 font-semibold text-red-900">
+              <button type="submit" className="min-h-12 border-2 border-red-700 bg-white px-6 font-bold text-red-700">
                 Cancel this reservation
               </button>
             </form>
           </section>
         </>
       )}
+      </div>
     </main>
   );
 }

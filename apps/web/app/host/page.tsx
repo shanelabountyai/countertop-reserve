@@ -9,7 +9,9 @@ import { allows, dayOf, holdsTables, isCalendarDay, minuteOfDay, periodAt, perio
 import { floorCursor, loadFloor, loadUnits, WAITLIST_CONSENT, type FloorRow } from '@reserve/db/floor';
 import { loadSchedule } from '@reserve/db/schedule';
 import { RESTAURANT } from '@/lib/restaurant';
+import { Notice } from '../notice';
 import { assign, move, ready, undo, walkIn } from './actions';
+import { Chrome } from './chrome';
 import { Expiring } from './expiring';
 import { LiveUpdates } from './live-updates';
 
@@ -73,9 +75,9 @@ const noticeText = (notice: string | undefined) =>
 // Distinct by kind, in text and shape as well as colour (P0-9): an allergy is
 // the loudest thing on the row, never styled like a birthday.
 const TAG: Record<string, { label: string; className: string }> = {
-  allergy: { label: '⚠ ALLERGY', className: 'border-2 border-red-900 bg-red-700 font-bold text-white' },
-  accessibility: { label: '♿ Accessibility', className: 'border-2 border-blue-800 bg-blue-50 font-semibold text-blue-900' },
-  occasion: { label: '✦ Occasion', className: 'border border-amber-700 bg-amber-50 text-amber-950' },
+  allergy: { label: '⚠ ALLERGY', className: 'border-2 border-red-900 bg-red-700 font-extrabold tracking-wide text-white' },
+  accessibility: { label: '♿ Accessibility', className: 'border-2 border-sky-800 bg-sky-50 font-bold text-sky-900' },
+  occasion: { label: '✦ Occasion', className: 'border border-amber-800 bg-amber-50 text-amber-900' },
 };
 
 const FAILURE: Record<string, string> = { opted_out: 'guest opted out of texts', rate_limited: 'daily text limit reached' };
@@ -95,48 +97,42 @@ export default async function HostPage({ searchParams }: { searchParams: Promise
   const periodOf = (r: FloorRow) => periodAt(periods, minuteOfDay(r.startAt, TZ))?.name ?? 'Outside service hours';
   const waitlist = rows.filter((r) => r.status === 'waitlisted');
   const book = rows.filter((r) => r.status !== 'waitlisted');
+  const unconfirmed = rows.filter((r) => r.status === 'booked').length;
   const groups = [...periods.map((p) => p.name), 'Outside service hours']
     .map((name) => ({ name, rows: book.filter((r) => periodOf(r) === name) }))
     .filter((g) => g.rows.length > 0);
 
   return (
-    <main className="mx-auto max-w-5xl p-4 text-lg text-neutral-950">
+    <>
+      <Chrome active="Book" status={unconfirmed > 0 ? <span className="text-sky-300">{unconfirmed} UNCONFIRMED</span> : null} clock={time(now)} />
+      <main className="mx-auto max-w-5xl bg-surface p-6 text-lg text-stone-900">
       <LiveUpdates cursor={cursor} />
-      <header className="flex flex-wrap items-baseline justify-between gap-2">
-        <h1 className="text-3xl font-bold">Floor</h1>
-        <p>
-          {day === today ? 'Tonight' : day} · {RESTAURANT.restaurant} ·{' '}
-          <a href="/host/board" className="underline">
-            Tables
-          </a>{' '}
-          ·{' '}
-          <a href="/host/hours" className="underline">
-            Hours
-          </a>{' '}
-          ·{' '}
-          <a href="/host/report" className="underline">
-            Report
-          </a>
+      <div className="flex flex-wrap items-baseline gap-4">
+        {/* The screen keeps its name. The canvas's "Tonight" is the meta line
+            beside it — renaming a screen is not a restyle. */}
+        <h1 className="font-display text-4xl font-bold">Floor</h1>
+        <p className="font-bold text-stone-600">
+          {day === today ? 'Tonight' : day} · {RESTAURANT.restaurant} · {book.length} booked · {waitlist.length} waiting
         </p>
-      </header>
+      </div>
 
-      <div aria-live="polite" className="mt-3 min-h-8">
-        {noticeText(notice) ? <p className="rounded-lg border-2 border-neutral-800 bg-yellow-100 px-4 py-2 font-semibold">{noticeText(notice)}</p> : null}
+      <div aria-live="polite" className="mt-4 min-h-8">
+        {noticeText(notice) ? <Notice>{noticeText(notice)}</Notice> : null}
       </div>
 
       <WalkInForm />
 
       <section aria-labelledby="waitlist" className="mt-6">
-        <h2 id="waitlist" className="text-2xl font-bold">
-          Waitlist <span className="font-normal">({waitlist.length})</span>
+        <h2 id="waitlist" className="border-b-[3px] border-ink pb-2 text-2xl font-extrabold">
+          Waitlist <span className="font-semibold text-stone-600">({waitlist.length})</span>
         </h2>
-        {waitlist.length === 0 ? <p className="mt-2 text-neutral-700">Nobody waiting.</p> : <ul className="mt-2 flex flex-col gap-3">{waitlist.map((r) => <Row key={r.id} r={r} day={day} now={now} units={units} />)}</ul>}
+        {waitlist.length === 0 ? <p className="mt-2 text-stone-700">Nobody waiting.</p> : <ul className="mt-2 flex flex-col gap-3">{waitlist.map((r) => <Row key={r.id} r={r} day={day} now={now} units={units} />)}</ul>}
       </section>
 
       {groups.length === 0 ? <p className="mt-6">No reservations on this day.</p> : null}
       {groups.map((g, i) => (
         <section key={g.name} aria-labelledby={`period-${i}`} className="mt-6">
-          <h2 id={`period-${i}`} className="text-2xl font-bold">
+          <h2 id={`period-${i}`} className="border-b-[3px] border-ink pb-2 text-2xl font-extrabold">
             {g.name}
           </h2>
           <ul className="mt-2 flex flex-col gap-3">
@@ -146,7 +142,8 @@ export default async function HostPage({ searchParams }: { searchParams: Promise
           </ul>
         </section>
       ))}
-    </main>
+      </main>
+    </>
   );
 }
 
@@ -161,10 +158,10 @@ function Row({ r, day, now, units }: { r: FloorRow; day: string; now: Date; unit
   if (r.status === 'waitlisted') state += ` · ${minutesSince(r.startAt, now)} min`;
 
   return (
-    <li data-testid="floor-row" className={`flex flex-wrap items-center gap-3 rounded-xl border-2 p-3 ${done ? 'border-neutral-300 bg-neutral-100' : 'border-neutral-400 bg-white'}`}>
-      <div className="w-24 text-xl font-bold tabular-nums">{time(r.startAt)}</div>
+    <li data-testid="floor-row" className={`flex flex-wrap items-center gap-4 border-[3px] p-4 ${done ? 'border-stone-300 bg-stone-50' : 'border-ink bg-white'}`}>
+      <div className="w-24 text-[22px] font-extrabold tabular-nums">{time(r.startAt)}</div>
       <div className="min-w-48 flex-1">
-        <p className="text-xl font-semibold">{r.guestName}</p>
+        <p className="text-xl font-bold">{r.guestName}</p>
         <p>
           Party of {r.partySize}
           {r.tableIds.length > 0 ? ` · ${r.tableIds.join('+')}` : ''}
@@ -173,7 +170,7 @@ function Row({ r, day, now, units }: { r: FloorRow; day: string; now: Date; unit
         {r.tags.length > 0 || r.note ? (
           <p className="mt-1 flex flex-wrap items-center gap-2">
             {r.tags.map((t) => (
-              <span key={t} className={`rounded-md px-2 py-0.5 ${TAG[t]?.className ?? 'border'}`}>
+              <span key={t} className={`px-2 py-0.5 ${TAG[t]?.className ?? 'border'}`}>
                 {TAG[t]?.label ?? t}
               </span>
             ))}
@@ -182,19 +179,19 @@ function Row({ r, day, now, units }: { r: FloorRow; day: string; now: Date; unit
         ) : null}
         {/* A guest who never got the text must not look confirmed by silence (P0-5). */}
         {failed.map((m) => (
-          <p key={m.kind} className="mt-1 font-semibold text-red-800">
+          <p key={m.kind} className="mt-1 font-bold text-red-700">
             ✕ {KIND[m.kind] ?? 'A'} text failed: {FAILURE[m.failureReason ?? ''] ?? 'not delivered'}
           </p>
         ))}
-        {r.status === 'booked' && !r.texts ? <p className="mt-1 text-neutral-800">No texts — confirm by phone.</p> : null}
-        {r.status === 'booked' && confirmation?.status === 'queued' ? <p className="mt-1 text-neutral-800">Confirmation text not sent yet.</p> : null}
-        {readyText && readyText.status !== 'failed' ? <p className="mt-1 text-neutral-800">&quot;Table ready&quot; texted.</p> : null}
+        {r.status === 'booked' && !r.texts ? <p className="mt-1 text-stone-800">No texts — confirm by phone.</p> : null}
+        {r.status === 'booked' && confirmation?.status === 'queued' ? <p className="mt-1 text-stone-800">Confirmation text not sent yet.</p> : null}
+        {readyText && readyText.status !== 'failed' ? <p className="mt-1 text-stone-800">&quot;Table ready&quot; texted.</p> : null}
       </div>
-      <p className="w-44 font-semibold">{state}</p>
+      <p className="w-44 font-extrabold">{state}</p>
       <div className="flex flex-wrap items-center gap-2">
         {r.undoUntil ? (
           <Expiring key={r.undoUntil.getTime()} ms={r.undoUntil.getTime() - now.getTime()}>
-            <Tap action={undo} id={r.id} day={day} label="Undo" className="border-2 border-neutral-900 bg-yellow-300" />
+            <Tap action={undo} id={r.id} day={day} label="Undo" className="border-2 border-ink bg-amber-400 font-extrabold" />
           </Expiring>
         ) : null}
         {/* Staff confirmation: the guest rang, or told the host at the door.
@@ -203,17 +200,17 @@ function Row({ r, day, now, units }: { r: FloorRow; day: string; now: Date; unit
             guest who declined texts, whose booking the sweep will never
             auto-release, so the host is the one who marks them expected. */}
         {allows(r.status, 'confirmed', 'host') ? (
-          <Tap action={move} id={r.id} day={day} to="confirmed" label="Confirm" className="border-2 border-neutral-800 bg-white" />
+          <Tap action={move} id={r.id} day={day} to="confirmed" label="Confirm" className="border-2 border-stone-600 bg-white" />
         ) : null}
         {allows(r.status, 'seated', 'host') ? (
           // The largest thing on the row (P0-9).
-          <Tap action={move} id={r.id} day={day} to="seated" label="Seat" className="min-h-16 min-w-32 bg-green-800 text-xl font-bold text-white" />
+          <Tap action={move} id={r.id} day={day} to="seated" label="Seat" className="min-h-16 min-w-32 bg-green-800 text-xl font-extrabold text-white" />
         ) : null}
-        {r.status === 'waitlisted' && r.texts && !readyText ? <Tap action={ready} id={r.id} day={day} label="Text: table ready" className="border-2 border-neutral-800 bg-white" /> : null}
-        {allows(r.status, 'completed', 'host') ? <Tap action={move} id={r.id} day={day} to="completed" label="Clear table" className="border-2 border-neutral-800 bg-white" /> : null}
-        {allows(r.status, 'no_show', 'host') ? <Tap action={move} id={r.id} day={day} to="no_show" label="No-show" className="border-2 border-neutral-800 bg-white" /> : null}
-        {allows(r.status, 'cancelled', 'host') ? <Tap action={move} id={r.id} day={day} to="cancelled" label="Cancel" className="border-2 border-red-800 bg-white text-red-800" /> : null}
-        {allows(r.status, 'abandoned', 'host') ? <Tap action={move} id={r.id} day={day} to="abandoned" label="Remove" className="border-2 border-red-800 bg-white text-red-800" /> : null}
+        {r.status === 'waitlisted' && r.texts && !readyText ? <Tap action={ready} id={r.id} day={day} label="Text: table ready" className="border-2 border-stone-600 bg-white" /> : null}
+        {allows(r.status, 'completed', 'host') ? <Tap action={move} id={r.id} day={day} to="completed" label="Clear table" className="border-2 border-stone-600 bg-white" /> : null}
+        {allows(r.status, 'no_show', 'host') ? <Tap action={move} id={r.id} day={day} to="no_show" label="No-show" className="border-2 border-stone-600 bg-white" /> : null}
+        {allows(r.status, 'cancelled', 'host') ? <Tap action={move} id={r.id} day={day} to="cancelled" label="Cancel" className="border-2 border-red-700 bg-white text-red-700" /> : null}
+        {allows(r.status, 'abandoned', 'host') ? <Tap action={move} id={r.id} day={day} to="abandoned" label="Remove" className="border-2 border-red-700 bg-white text-red-700" /> : null}
         <AssignForm r={r} day={day} units={units} />
       </div>
     </li>
@@ -242,7 +239,7 @@ function AssignForm({ r, day, units }: { r: FloorRow; day: string; units: PlanUn
         name="unit"
         defaultValue={current ?? ''}
         aria-label={`Table for ${r.guestName}`}
-        className="min-h-12 rounded-lg border-2 border-neutral-500 bg-white px-2"
+        className="min-h-12 border-2 border-stone-600 bg-white px-2 text-lg"
       >
         {current ? null : <option value="">Pick a table…</option>}
         {sections.map((section) => (
@@ -257,7 +254,7 @@ function AssignForm({ r, day, units }: { r: FloorRow; day: string; units: PlanUn
           </optgroup>
         ))}
       </select>
-      <button type="submit" className="min-h-12 min-w-12 rounded-lg border-2 border-neutral-800 bg-white px-4 font-semibold">
+      <button type="submit" className="min-h-12 min-w-12 border-2 border-stone-600 bg-white px-4 font-bold">
         {r.tableIds.length === 0 ? 'Seat here' : 'Move'}
       </button>
     </form>
@@ -271,7 +268,7 @@ function Tap({ action, id, day, to, label, className }: { action: (f: FormData) 
       <input type="hidden" name="id" value={id} />
       <input type="hidden" name="day" value={day} />
       {to ? <input type="hidden" name="to" value={to} /> : null}
-      <button type="submit" className={`min-h-12 min-w-12 rounded-lg px-4 font-semibold ${className}`}>
+      <button type="submit" className={`min-h-12 min-w-12 px-4 font-bold ${className}`}>
         {label}
       </button>
     </form>
@@ -280,31 +277,31 @@ function Tap({ action, id, day, to, label, className }: { action: (f: FormData) 
 
 function WalkInForm() {
   return (
-    <section aria-labelledby="walkin" className="mt-4 rounded-xl border-2 border-neutral-400 p-4">
-      <h2 id="walkin" className="text-2xl font-bold">
+    <section aria-labelledby="walkin" className="mt-6 border-[3px] border-ink bg-white p-5">
+      <h2 id="walkin" className="text-2xl font-extrabold">
         Walk-in
       </h2>
-      <p className="text-neutral-800">Seats them now if a table is free for their whole turn; otherwise adds them to the waitlist with a quoted range.</p>
+      <p className="text-stone-600">Seats them now if a table is free for their whole turn; otherwise adds them to the waitlist with a quoted range.</p>
       <form action={walkIn} className="mt-3 flex flex-wrap items-end gap-3">
         {/* Minted per render: a double-tapped submit is one party. */}
         <input type="hidden" name="key" value={randomUUID()} />
-        <label className="flex flex-col">
+        <label className="flex flex-col gap-1 text-sm font-extrabold tracking-widest text-stone-600 uppercase">
           Party
-          <input name="partySize" type="number" min={1} max={50} defaultValue={2} required className="min-h-12 w-24 rounded-lg border-2 border-neutral-500 px-3" />
+          <input name="partySize" type="number" min={1} max={50} defaultValue={2} required className="min-h-12 w-24 border-2 border-stone-600 bg-white px-3 text-lg font-bold tabular-nums text-stone-900" />
         </label>
-        <label className="flex flex-col">
+        <label className="flex flex-col gap-1 text-sm font-extrabold tracking-widest text-stone-600 uppercase">
           Name
-          <input name="guestName" defaultValue="Walk-in" maxLength={80} className="min-h-12 rounded-lg border-2 border-neutral-500 px-3" />
+          <input name="guestName" defaultValue="Walk-in" maxLength={80} className="min-h-12 border-2 border-stone-600 bg-white px-3 text-lg font-normal text-stone-900" />
         </label>
-        <label className="flex flex-col">
+        <label className="flex flex-col gap-1 text-sm font-extrabold tracking-widest text-stone-600 uppercase">
           Mobile (optional)
-          <input name="guestPhone" type="tel" placeholder="+15035550123" className="min-h-12 rounded-lg border-2 border-neutral-500 px-3" />
+          <input name="guestPhone" type="tel" placeholder="+15035550123" className="min-h-12 border-2 border-stone-600 bg-white px-3 text-lg font-normal text-stone-900" />
         </label>
-        <label className="flex min-h-12 items-center gap-2">
-          <input name="textWhenReady" type="checkbox" className="h-6 w-6" />
+        <label className="flex min-h-12 max-w-xs items-center gap-3">
+          <input name="textWhenReady" type="checkbox" className="h-6 w-6 shrink-0 accent-red-700" />
           Guest agreed: “{WAITLIST_CONSENT}”
         </label>
-        <button type="submit" className="min-h-12 rounded-lg bg-neutral-900 px-6 font-semibold text-white">
+        <button type="submit" className="min-h-12 bg-ink px-6 font-extrabold text-white">
           Seat or waitlist
         </button>
       </form>

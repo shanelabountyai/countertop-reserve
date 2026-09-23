@@ -469,3 +469,37 @@ walk-in in the same breath, not whenever some background job next runs.
 A move is undoable for five seconds, like every other host tap. Undo is an
 allocation too, so if the table was given away inside those five seconds, it
 says so rather than taking it back.
+
+## V-018 — Making it look like something
+
+Everything up to here was built to be right. This item was built to be
+*read* — by a host holding a tablet at the pass with a queue in front of
+them, and by a guest on a phone outside the restaurant.
+
+The look is one restaurant's, not a template's: a warm paper ground, a slab
+serif for the one big line on each screen, a workhorse sans for everything
+else, and hard square corners with heavy black rules. Nothing is rounded,
+nothing floats on a shadow. It reads like a printed reservation book, which
+is the thing it replaced.
+
+The rule underneath it is the one that matters: **colour never carries
+meaning on its own.** An allergy is not "the red one" — it is a word, in
+capitals, in a filled box with a heavier border than anything near it. A free
+table is not a green dot; it is the word *Free* and the number of minutes it
+is free for. Every state on every screen is legible with the colour taken
+away, which is what makes the accessibility audits pass rather than a
+retrofit that chased them.
+
+There is a new screen, `/host/design`, which shows every colour, every type
+size, all nine reservation statuses and all four table states on one page.
+It is not a picture of those things — it renders them from the same code the
+real screens use. Add a tenth status and it shows up there by itself. Change
+a colour on the floor and forget the reference sheet, and you can't: there is
+only one of them.
+
+The honest part: the design also drew a full message thread — every text on a
+booking, the guest's replies alongside. That one isn't built. Showing it
+needs the app to load the whole message log rather than the latest message,
+and that is a feature with its own edge cases, not a paint job. The manage
+page shows the most recent text, exactly as it was sent and stored, which is
+the guarantee the thread would have illustrated.

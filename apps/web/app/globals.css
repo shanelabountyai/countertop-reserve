@@ -1,1 +1,26 @@
 @import "tailwindcss";
+
+/* V-018 — the design canvas, as tokens.
+   The palette is Tailwind's own on purpose: the canvas was drawn in stone /
+   red-700 / amber-500 / sky-700 / green-800, so a colour here is a name the
+   markup can already spell. Only the four things Tailwind has no name for
+   are declared. */
+@theme {
+  --font-sans: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-zilla), Georgia, ui-serif, serif;
+
+  /* Nothing in this product is rounded. Zeroed as well as stripped from the
+     markup, so a stray `rounded-*` cannot reintroduce a curve. */
+  --radius-xs: 0px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+  --radius-3xl: 0px;
+  --radius-4xl: 0px;
+
+  --color-ground: #e9e5df;  /* the room behind the app */
+  --color-surface: #fffdf9; /* the app's own canvas */
+  --color-ink: #0a0a0a;     /* card borders and the staff chrome */
+}
