@@ -1,4 +1,4 @@
-# Next: V-018, the restyle. V-017 is shipped and green.
+# Next: project closure. V-018 is shipped and green; the backlog is empty.
 
 **<https://reserve.labintelligence.co>** — Vercel + Neon, behind one shared
 password (`grep DEMO_ACCESS_PASSWORD .env.production.local` — that file, not
@@ -6,40 +6,46 @@ password (`grep DEMO_ACCESS_PASSWORD .env.production.local` — that file, not
 **the username is ignored**; type anything. `/host` wants a separate
 `STAFF_PASSCODE`. `docs/DEPLOYMENT.md` is the full recipe.
 
-Gate green at V-017: lint, typecheck, **821 unit across 22 files**, build,
-**40 e2e**. Watch CI before calling V-017 closed — it is the run that applies
-the new migration from scratch and runs the unit suite under two hostile
-timezones.
+Gate green at V-018: lint, typecheck, **821 unit across 22 files**, build,
+**41 e2e**. Watch CI green before calling V-018 closed.
 
-## Closed on 2026-09-22
+## Closed on 2026-09-23
 
-- **V-016 — the table board.** Confirmed green in CI (run 35743892471).
-- **V-017 — manual assignment.** `unitMisfit()` in `packages/core` beside
-  `fittingUnits()`, `assignUnit()` in `packages/db/floor.ts` routed through
-  the exported `fit()`, the picker on each `/host` row. One migration:
-  `ReservationEvent.fromTableIds`, which is how the undo of a move knows
-  where to put the party back. 36 new unit tests, 4 new e2e.
+- **V-018 — the restyle.** The approved canvas across all six screens. The
+  palette was already Tailwind's (`stone` / `red-700` / `amber-500` /
+  `sky-700` / `green-800`), so most of it was the cool `neutral-*` ramp
+  swapped for the warm `stone-*` one plus four theme tokens
+  (`--color-ground`, `--color-surface`, `--color-ink`, `--font-display`).
+  New: `app/notice.tsx`, `app/host/chrome.tsx`, `app/host/table-state.ts`,
+  and `/host/design` — a token sheet generated from the lifecycle module and
+  the board's own state map, so it cannot drift silently. One new e2e.
+  **No migration.** Screenshots regenerated.
 
 ## Pick up here
 
-**V-018 — the restyle.** The approved design canvas is
-<https://claude.ai/artifact/B8MVj7sZQV3XxTCNGMqLNC> ("Countertop Reserve UI",
-six artboards; source mock in the "Fire kitchen" design project). **Nothing
-in the repo is styled from it yet.** It touches all six screens — `/host`,
-`/host/board`, `/host/design`, `/book`, `/m/[token]`, the message thread —
-and every axe assertion has to stay green, including the new picker on the
-host row (`aria-label="Table for <name>"`).
+**Project closure.** The backlog is empty. Per the global CLAUDE.md
+"Definition of done", closure needs all three, and none is optional:
 
-It is not yet a backlog item: add the `V-018` row to `docs/backlog.md` in the
-same commit that starts it.
+1. **`docs/DEMO.md` refreshed**, and *every command in it run once* before it
+   ships. The screens it walks through all changed look in V-018; check the
+   copy it quotes still matches, and that the env vars it tells you to grep
+   exist in the file it names.
+2. **The exec-brief artifact** — `Countertop Reserve in Brief` already
+   exists at <https://claude.ai/artifact/78aJhCD9HZePoiXjun93f6>. Update it
+   rather than publishing a second one (read it first, then republish to that
+   URL). Its figures must match `WRITEUP.md` → *By the Numbers*.
+3. **The LinkedIn drafts** in the Lab Intelligence Ledger
+   (<https://claude.ai/artifact/Ai5xKScgT2sWtqXRQ1ZA8i>), tagged to this
+   project and slotted so no two adjacent drafts share a pillar. Mine
+   `WRITEUP.md` → *Defects Found* and *The Hardest Bug* first.
 
-Recommend **Sonnet** — it is presentation work against an approved design,
-not a correctness problem.
+**Before the brief: re-measure `WRITEUP.md` → *By the Numbers*.** That table
+is explicitly as of **V-015** and says so — it is stale by V-016, V-017 and
+V-018 (unit tests are 821, not 768; e2e 41, not 32; items 16 of 16, not 13
+of 13). Re-run the suite and count the lines; do not edit the previous row.
 
-**Then: project closure.** The backlog is empty after V-018. Closure needs
-all three of `docs/DEMO.md` refreshed (every command run once), the
-exec-brief artifact, and the LinkedIn drafts in the Ledger — see the global
-CLAUDE.md "Definition of done".
+Recommend **Opus** for the brief and the ledger drafts — they are judgement
+and audience work, not mechanical.
 
 ## Things a future session still trips on
 
@@ -48,18 +54,18 @@ CLAUDE.md "Definition of done".
   history. Identify a database by its **endpoint** instead — this project is
   `ep-dawn-snow-b4dkr9e2` (`c-6.us-east-2`), Countertop is
   `ep-empty-dream-a5px6wnr` (`us-east-2`).
-- **V-017's migration is applied everywhere** — local test, local
-  `reserve_dev`, and production Neon (`ep-dawn-snow-b4dkr9e2`), verified with
-  `migrate:status`. **The build does not migrate** (`docs/DEPLOYMENT.md`: "a
-  build that migrates is a build that can half-migrate"), so any future
-  schema change must be applied by hand or the deployed `/host` 500s on the
-  missing column. `.env.local` is a LOCAL `reserve_dev`, not a Neon branch;
-  production creds live in `.env.production.local`.
-- **A fixture's own state changes get asserted, not assumed.** V-017 lost a
-  pass to `hostMove(..., 'completed')` on a `booked` party — not an edge, so
-  the setup silently no-opped and the test asserted the opposite of its name.
-- **`booked → completed` is not an edge.** A party must be `seated` before
-  they can be cleared. `cancelled` is the way to free a booked party's table.
+- **V-018 added no migration.** The last one is V-017's
+  `ReservationEvent.fromTableIds`, applied on all three databases. **The
+  build does not migrate** (`docs/DEPLOYMENT.md`: "a build that migrates is a
+  build that can half-migrate"), so any future schema change must be applied
+  by hand or the deployed `/host` 500s on the missing column.
+- **Renaming a heading is not a restyle.** V-018 lost a sweep to changing
+  `/host`'s h1 from `Floor` to the canvas's `Tonight`; `host.spec` and
+  `assign.spec` both name that heading in their sign-in helper, so the
+  failure looked like a login failure four tests deep.
+- **The e2e chrome is the page's one `<header>`.** `board.spec` asserts the
+  banner states how many tables are free. A page that adds a second
+  `<header>` gives `getByRole('banner')` two matches and fails strict mode.
 - **`perl -pi` rewrites a file whether or not it substitutes anything.** A
   zero-match run updates the mtime and looks exactly like success. This cost
   two irreversible Neon resets. Match `[^@]*`, never a class enumerating what
@@ -85,4 +91,6 @@ CLAUDE.md "Definition of done".
   lock. A DB test passing an in-memory `Schedule` must also call
   `seedSchedule(...)` from `packages/db/testing`, or every slot is `closed`.
 - **`db:seed:demo` writes the *dev* database and `npm run dev` is
-  `dev:test`.** Use `npm run dev:demo` for the local demo.
+  `dev:test`.** Use `npm run dev:demo` for the local demo. Regenerating the
+  screenshots needs that server plus a `MANAGE_TOKEN` from a `booked` row —
+  the recipe is in `WRITEUP.md` → *The Screens*.

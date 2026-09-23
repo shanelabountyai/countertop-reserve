@@ -1159,3 +1159,10 @@ against the modules, so the sheet cannot quietly stop listing everything.
   restyle, and two specs name the heading.
 - `docs/screenshots/` was regenerated — the six shots were of the old look
   and `WRITEUP.md` links every one of them.
+
+V-018 committed at 6ed3ad5. The gate passed after one fix: the `/host` h1 had
+been renamed to the canvas's "Tonight", and two specs name the heading
+`Floor`. The alarm caught it on `assign.spec`'s second test and the sweep was
+killed there rather than allowed to run out — the same failure was waiting in
+`host.spec`. 821 unit tests across 22 files (unchanged — nothing in
+`packages/` moved) and 41 e2e, up one for the design sheet.
