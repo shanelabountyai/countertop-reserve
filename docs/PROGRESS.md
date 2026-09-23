@@ -1223,3 +1223,7 @@ name their method, because the V-015 row did not and could not be
 reproduced: under every rule I could construct it measures 6,459, not the
 6,505 it recorded. A number with an unrecorded method is a number nobody can
 re-derive, which is the same defect as a stale one wearing better clothes.
+
+Closure committed at 9c7a4fe. Gate green on all five steps: lint, typecheck,
+821 unit across 22 files, production build, 41 e2e. The project is closed —
+there is no V-019.
