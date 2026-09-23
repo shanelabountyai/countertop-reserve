@@ -225,16 +225,25 @@ time, the point is the part to keep.
 ### 1 · The booking grid, and a refusal that explains itself
 `/book?party=10&day=2026-10-02` · screenshot `2-book-times.png`
 
-**On screen:** a party of ten on a full Friday. Every dinner slot is refused —
-and each one still shows, with its reason, rather than vanishing.
+**On screen:** a party of ten on a Friday that fills as the night goes on. The
+early sittings are open; **from 19:15 every slot is refused** — and each refused
+one still shows, with its reason, rather than vanishing.
 
-**Say:** "Ten people. C2 is the only unit in the house that seats them, and it's
-taken all night. Notice what the grid does with that — it doesn't hide the
-times, it tells you *why* each one is gone. And the 21:15 slot says *not
-serving* rather than disappearing, because last seating is 21:00."
+**Say:** "Ten people. C2 — two six-tops pushed together — is the only unit in
+the house that seats them, so the whole evening turns on one piece of
+inventory. It's free early and gone from quarter past seven. Notice what the
+grid does with the gone ones: it doesn't hide the times, it tells you *why*.
+And read the two reasons — *fully booked* and *not serving* are different
+answers. One means try another night, the other means we're closed. The 21:15
+slot says *not serving* because last seating is 21:00."
 
 **The point:** a greyed-out slot is UX, not the safety mechanism. The next two
 screens are where the actual guarantee lives.
+
+> [!NOTE]
+> **Don't say "every slot is refused."** It was true of an earlier seed and is
+> not true of this one — the early sittings free up because those parties are
+> `completed` on the seeded night. Look at the screen before you narrate it.
 
 ### 2 · The manage page, and the snapshot rule
 `/m/<Yardley Cole's token>` · screenshot `3-manage.png`
@@ -484,7 +493,7 @@ link:
 | File | Screen | The one thing it shows |
 |---|---|---|
 | `1-book-party.png` | `/book` | The entry point |
-| `2-book-times.png` | `/book?party=10&day=2026-10-02` | Every slot refused **with its reason** |
+| `2-book-times.png` | `/book?party=10&day=2026-10-02` | Refusals that **say why** — *fully booked* and *not serving* are different answers |
 | `3-manage.png` | `/m/<token>` | The snapshot rule — text as sent and stored |
 | `4-host-floor.png` | `/host` | `T16+T17`, a release, a no-show, a failed text |
 | `5-host-board.png` | `/host/board` | T16 and T17 **blocked, taken by C2** — a combination as inventory |

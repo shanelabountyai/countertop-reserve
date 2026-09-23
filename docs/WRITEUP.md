@@ -81,10 +81,10 @@ and a test: 28 assertions, zero double-seated tables, zero stranded parties.
 ## The Screens
 
 Shot against the seeded 60-cover service in `docs/screenshots/`:
-[the booking grid](screenshots/2-book-times.png) (a party of 10 on a full
-night — every dinner slot refused with its reason, because the floor's two
-combinations are both taken, and the closing overhang reads *not serving*
-rather than vanishing), [the floor](screenshots/4-host-floor.png)
+[the booking grid](screenshots/2-book-times.png) (a party of 10 on a night
+that fills — the early sittings open, everything from 19:15 refused *with its
+reason*, because C2 is the only unit that seats ten, and the closing overhang
+reads *not serving* rather than vanishing), [the floor](screenshots/4-host-floor.png)
 (combinations as `T16+T17`, a released table, a no-show, and a failed
 reminder on its own row), [the manage page](screenshots/3-manage.png) (the
 snapshot rule visible — it shows the text as *sent and stored*, not

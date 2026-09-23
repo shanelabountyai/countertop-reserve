@@ -1,51 +1,61 @@
-# Next: project closure. V-018 is shipped and green; the backlog is empty.
+# Next: nothing. Countertop Reserve is closed.
+
+Backlog empty at V-018, and all three closure deliverables exist. There is no
+V-019. If you opened this session expecting work, the work is on another
+project.
 
 **<https://reserve.labintelligence.co>** — Vercel + Neon, behind one shared
 password (`grep DEMO_ACCESS_PASSWORD .env.production.local` — that file, not
 `.env.local`, which does not have it). The browser prompt is HTTP Basic and
 **the username is ignored**; type anything. `/host` wants a separate
-`STAFF_PASSCODE`. `docs/DEPLOYMENT.md` is the full recipe.
+`STAFF_PASSCODE`, and the hosted one is **not** the local one — read it from
+`.env.production.local` too. `docs/DEPLOYMENT.md` is the full recipe.
 
-Gate green at V-018: lint, typecheck, **821 unit across 22 files**, build,
-**41 e2e**. Watch CI green before calling V-018 closed.
+Gate green at closure: lint, typecheck, **821 unit across 22 files**, build,
+**41 e2e**.
 
 ## Closed on 2026-09-23
 
-- **V-018 — the restyle.** The approved canvas across all six screens. The
-  palette was already Tailwind's (`stone` / `red-700` / `amber-500` /
-  `sky-700` / `green-800`), so most of it was the cool `neutral-*` ramp
-  swapped for the warm `stone-*` one plus four theme tokens
-  (`--color-ground`, `--color-surface`, `--color-ink`, `--font-display`).
-  New: `app/notice.tsx`, `app/host/chrome.tsx`, `app/host/table-state.ts`,
-  and `/host/design` — a token sheet generated from the lifecycle module and
-  the board's own state map, so it cannot drift silently. One new e2e.
-  **No migration.** Screenshots regenerated.
+- **V-018 — the restyle.** The approved canvas across all six screens.
+- **Closure.** The three deliverables the global "definition of done"
+  requires, plus a re-measure of `WRITEUP.md` → *By the Numbers*.
 
-## Pick up here
+### What closure actually turned up
 
-**Project closure.** The backlog is empty. Per the global CLAUDE.md
-"Definition of done", closure needs all three, and none is optional:
+Running the demo script end to end is not a formality — it found four wrong
+claims, and two of them were product-shaped rather than numeric:
 
-1. **`docs/DEMO.md` refreshed**, and *every command in it run once* before it
-   ships. The screens it walks through all changed look in V-018; check the
-   copy it quotes still matches, and that the env vars it tells you to grep
-   exist in the file it names.
-2. **The exec-brief artifact** — `Countertop Reserve in Brief` already
-   exists at <https://claude.ai/artifact/78aJhCD9HZePoiXjun93f6>. Update it
-   rather than publishing a second one (read it first, then republish to that
-   URL). Its figures must match `WRITEUP.md` → *By the Numbers*.
-3. **The LinkedIn drafts** in the Lab Intelligence Ledger
-   (<https://claude.ai/artifact/Ai5xKScgT2sWtqXRQ1ZA8i>), tagged to this
-   project and slotted so no two adjacent drafts share a pillar. Mine
-   `WRITEUP.md` → *Defects Found* and *The Hardest Bug* first.
+- `docs/DEMO.md` still told the reader **"Not deployed anywhere, and that
+  was a decision"**, four items after V-014 deployed it, while its own
+  opening paragraph linked the hosted copy.
+- It claimed **"every dinner slot is refused"** for a party of ten. False
+  against this seed: 17:00–19:00 are offered, because those parties are
+  `completed` and have released their tables. It is a fixture fact written
+  as a product fact.
+- The **exec brief's two embedded screenshots were the pre-V-018 look** —
+  rounded corners, cool grey, no staff chrome. A brief showing one product
+  and linking to a different-looking one. Both figures are re-shot.
+- The V-015 line counts **could not be reproduced under any rule** — 6,459,
+  not the 6,505 recorded. The rows name their method now.
 
-**Before the brief: re-measure `WRITEUP.md` → *By the Numbers*.** That table
-is explicitly as of **V-015** and says so — it is stale by V-016, V-017 and
-V-018 (unit tests are 821, not 768; e2e 41, not 32; items 16 of 16, not 13
-of 13). Re-run the suite and count the lines; do not edit the previous row.
+## Artifacts (also in `docs/RELEASE_NOTES.md`)
 
-Recommend **Opus** for the brief and the ledger drafts — they are judgement
-and audience work, not mechanical.
+| What | URL |
+|---|---|
+| **Countertop Reserve in Brief** (private) | <https://claude.ai/artifact/78aJhCD9HZePoiXjun93f6> |
+| **Lab Intelligence Ledger** (anyone with the link) | <https://claude.ai/artifact/Ai5xKScgT2sWtqXRQ1ZA8i> |
+| **Build Log** (private) | <https://claude.ai/artifact/28KeGV3xfBwcBuoMEQjFMj> |
+
+Ledger posts **38, 39, 40** are this project's newest drafts — V-016's
+39-versus-40-minute floor, V-018's heading rename, V-017's silent fixture.
+The whole 40-post queue has zero adjacent same-pillar pairs; keep it that way
+if you reorder.
+
+## If you come back to this repo
+
+The only open question in the PRD is quiet-hours start time, and it wants an
+operator, not a session. Real SMS integration is the one thing that would
+reopen the build, and it needs a carrier account, not a decision.
 
 ## Things a future session still trips on
 
@@ -54,15 +64,15 @@ and audience work, not mechanical.
   history. Identify a database by its **endpoint** instead — this project is
   `ep-dawn-snow-b4dkr9e2` (`c-6.us-east-2`), Countertop is
   `ep-empty-dream-a5px6wnr` (`us-east-2`).
-- **V-018 added no migration.** The last one is V-017's
-  `ReservationEvent.fromTableIds`, applied on all three databases. **The
-  build does not migrate** (`docs/DEPLOYMENT.md`: "a build that migrates is a
-  build that can half-migrate"), so any future schema change must be applied
-  by hand or the deployed `/host` 500s on the missing column.
+- **The last migration is V-017's** `ReservationEvent.fromTableIds`, applied
+  on all three databases. **The build does not migrate**
+  (`docs/DEPLOYMENT.md`: "a build that migrates is a build that can
+  half-migrate"), so any future schema change must be applied by hand or the
+  deployed `/host` 500s on the missing column.
 - **Renaming a heading is not a restyle.** V-018 lost a sweep to changing
   `/host`'s h1 from `Floor` to the canvas's `Tonight`; `host.spec` and
   `assign.spec` both name that heading in their sign-in helper, so the
-  failure looked like a login failure four tests deep.
+  failure looked like a login failure four tests deep. The h1 is `Floor`.
 - **The e2e chrome is the page's one `<header>`.** `board.spec` asserts the
   banner states how many tables are free. A page that adds a second
   `<header>` gives `getByRole('banner')` two matches and fails strict mode.
@@ -78,7 +88,8 @@ and audience work, not mechanical.
   keep the `Date` you already have.
 - **A fixture seeded from the database's clock cannot assert an exact
   elapsed minute.** Assert the band (`/(39|40) min/`) or freeze the clock —
-  never make the product round to suit the assertion.
+  never make the product round to suit the assertion. The board floors on
+  purpose; rounding up tells a host a turn fits when it does not.
 - **Tests refuse to run unless the environment NAMES the database they may
   wipe.** `TEST_DATABASE_NAME=reserve_test` is set by `npm test` and
   `npm run test:e2e`; CI sets `reserve_ci`.
@@ -93,4 +104,9 @@ and audience work, not mechanical.
 - **`db:seed:demo` writes the *dev* database and `npm run dev` is
   `dev:test`.** Use `npm run dev:demo` for the local demo. Regenerating the
   screenshots needs that server plus a `MANAGE_TOKEN` from a `booked` row —
-  the recipe is in `WRITEUP.md` → *The Screens*.
+  the recipe is in `docs/DEMO.md` → *No-laptop version*, and there are eight
+  screenshots now, not six.
+- **The seeded service is a *finished* Friday on a *future* date.** Most
+  parties are `completed`, so their tables are free for new bookings. That
+  is why the booking grid offers the early sittings. Do not write docs that
+  describe the night as full.

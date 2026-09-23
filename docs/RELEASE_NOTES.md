@@ -9,13 +9,15 @@ has six shots of the seeded 60-cover service, indexed in `WRITEUP.md` under
 ## Where the portfolio artifacts live
 
 An artifact nothing in the repo points at is lost the next time the gallery
-gets long, so both URLs live here. Both are private — they open for the
-account that owns them, and are shared deliberately, one reader at a time.
+gets long, so every URL lives here. The brief and the build log are private —
+they open for the account that owns them, and are shared deliberately, one
+reader at a time. **The ledger is shared as "anyone with the link,"** so a
+publish to it is immediately visible to anyone already holding that URL.
 
 | Artifact | URL |
 |---|---|
 | **Countertop Reserve in Brief** — the one-page exec brief, written for a non-engineering reader | <https://claude.ai/artifact/78aJhCD9HZePoiXjun93f6> |
-| **Lab Intelligence Ledger** — the cross-project LinkedIn queue; this project's drafts are tagged `Countertop Reserve` (11 of them as of 2026-09-21) | <https://claude.ai/artifact/Ai5xKScgT2sWtqXRQ1ZA8i> |
+| **Lab Intelligence Ledger** — the cross-project LinkedIn queue; this project's drafts are tagged `Countertop Reserve` (14 of them as of 2026-09-23 — posts 38/39/40 are V-016, V-017 and V-018) | <https://claude.ai/artifact/Ai5xKScgT2sWtqXRQ1ZA8i> |
 | **Build Log** — the cross-project status board; this project is its own row, `reserve`, separate from Countertop's `restaurant` | <https://claude.ai/artifact/28KeGV3xfBwcBuoMEQjFMj> |
 | **Live demo** — the seeded 60-cover service, behind one shared password | <https://reserve.labintelligence.co> |
 

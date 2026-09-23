@@ -1166,3 +1166,60 @@ been renamed to the canvas's "Tonight", and two specs name the heading
 killed there rather than allowed to run out — the same failure was waiting in
 `host.spec`. 821 unit tests across 22 files (unchanged — nothing in
 `packages/` moved) and 41 e2e, up one for the design sheet.
+
+## Closure — the three deliverables
+
+Not a backlog item; the "definition of done" pass. The backlog closed at
+V-018 and this is what the global conventions require on top of shipped code.
+
+**1. `docs/DEMO.md`, with every command in it actually run.** Against a fresh
+seed: migrations, `db:seed:demo`, `dev:demo`, the three verify commands, the
+manage-token query, all three webhook calls, `npm test -- capstone`, and the
+screenshot recipe. Most of it reproduced exactly — the seed ledger byte for
+byte, 200/20/18, one booked row (Yardley Cole), `replayed: true` on the
+second POST, `bad signature [401]` on the third, 28 capstone assertions in
+732ms.
+
+Four things were wrong, and only one was a number:
+
+- the gate line claimed 623 unit and 29 e2e; it is 821 and 41
+- **"Not deployed anywhere, and that was a decision"** was still in the
+  concede-before-you're-asked list, four items after V-014 deployed it — and
+  the file's own opening paragraph links the hosted copy. A document can
+  contradict itself across 450 lines and nobody notices, because nobody reads
+  it end to end except the person running it
+- **"a party of ten on a full Friday. Every dinner slot is refused"** — not
+  true of this seed. The 17:00–19:00 sittings are offered, because those
+  parties are `completed` and have released their tables. It reads as a
+  product claim and it is a fixture claim; the script now names 19:15 as
+  where the evening closes, and carries a note not to narrate a number you
+  rehearsed
+- the hosted section gave the site password but not the staff passcode, and
+  did not say the Basic-auth username is ignored
+
+And two screens had no demo stop at all: `/host/board` (V-016) and
+`/host/design` (V-018). The board is the best screen in the project for the
+combination-as-inventory invariant — T16 and T17 read *blocked, taken by C2*
+and C1 reads *taken by T1, T2*, so the bug class is visible as an absence
+rather than argued. Both are stops now, both are screenshot, and the
+screenshots renumber to demo order (hours 5→6, report 6→7).
+
+**2. The exec brief**, updated in place at its existing URL rather than
+republished as a second one. Figures re-synced to *By the Numbers* (862
+checks, 34 defects, sixteen requirements in twenty-four days), two capability
+rows added for the board and manual assignment, and — the part that mattered
+more than the numbers — **both embedded figures replaced.** They were the
+pre-V-018 look: rounded corners, cool grey, no chrome. A brief that shows one
+product and links to a different-looking one is a worse defect than a stale
+count, and only a closure pass that opens the artifact ever catches it.
+
+**3. Three new ledger drafts** (38 Impact, 39 Scale, 40 MarTech), mined from
+V-016, V-017 and V-018 — the 39-versus-40-minute floor, the heading rename's
+blast radius, and the fixture whose setup silently failed. Slotted so the
+whole 40-post queue has zero adjacent same-pillar pairs.
+
+**And the numbers re-measured rather than edited.** The line-count rows now
+name their method, because the V-015 row did not and could not be
+reproduced: under every rule I could construct it measures 6,459, not the
+6,505 it recorded. A number with an unrecorded method is a number nobody can
+re-derive, which is the same defect as a stale one wearing better clothes.
