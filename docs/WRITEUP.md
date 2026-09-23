@@ -88,8 +88,13 @@ rather than vanishing), [the floor](screenshots/4-host-floor.png)
 (combinations as `T16+T17`, a released table, a no-show, and a failed
 reminder on its own row), [the manage page](screenshots/3-manage.png) (the
 snapshot rule visible — it shows the text as *sent and stored*, not
-re-rendered), [hours](screenshots/5-host-hours.png), and
-[the report](screenshots/6-host-report.png).
+re-rendered), [the table board](screenshots/5-host-board.png) (T16 and T17
+struck out as *blocked — taken by C2*, which is the combination-as-inventory
+rule visible rather than argued), [hours](screenshots/6-host-hours.png),
+[the report](screenshots/7-host-report.png), and
+[the design sheet](screenshots/8-host-design.png) (all nine reservation
+statuses, rendered from the lifecycle module itself — a tenth fails to
+compile until it is classified).
 
 Regenerate after a UI change: `npm run db:seed:demo`, start the server on
 the dev database (`npm run dev:demo` — plain `npm run dev` is `dev:test` and
@@ -721,6 +726,28 @@ exactly the transition table refusing an invalid edge, which is what it is
 for. The test was the thing that ignored the answer.
 
 
+### V-018 — a heading rename read as a login failure
+
+The restyle changed `/host`'s h1 from `Floor` to the canvas's `Tonight`. Two
+specs, `host.spec` and `assign.spec`, name that heading in the helper that
+signs a host in and waits for the board — so the rename did not fail a
+heading assertion, it failed the *sign-in step* of every test in both files.
+The first red was four tests deep in `assign.spec`, and it read as a broken
+passcode.
+
+Nothing here was a product bug: the page was correct and the specs were
+correct about the old copy. The defect is that a presentation-only item had a
+blast radius nobody priced, because a heading is doubly employed — it is the
+thing a host reads and it is the thing a test waits on.
+
+Two things it is worth taking away. The failure alarm paid for itself: it
+fired on the first `✘` rather than at the end of the sweep, and the run was
+killed there instead of being allowed to spend four more minutes proving the
+same thing twice. And **a spec that waits on copy is coupled to copy** — the
+lazy repair was to fix the two helpers, but the honest note is that a
+`data-testid` on the landmark would have made the restyle free.
+
+
 ## Skills Learned / Functions Unlocked
 
 - **An exclusion constraint, and knowing when a unique constraint is a
@@ -844,25 +871,34 @@ is not the hardest — the method found it, not me.)*
 
 | | |
 |---|---|
-| **Backlog items shipped** | 13 of 13 (V-001 → V-013) |
-| **Commits** | 49 (one per item, plus its SHA-recording follow-up) |
-| **Application code** | 6,505 lines of TypeScript/TSX |
-| **Test code** | 4,598 lines — 0.71 lines of test per line of source |
-| **Unit tests** | **768 passing**, across 19 files |
-| **End-to-end tests** | **32 passing**, against a production build, axe included |
+| **Backlog items shipped** | 16 of 16 (V-001 → V-018), plus V-014 the deploy and V-015 an external review, neither of which was a backlog item |
+| **Commits** | 65 (one per item, plus its SHA-recording follow-up) |
+| **Application code** | 7,397 lines |
+| **Test code** | 5,628 lines — 0.76 lines of test per line of source |
+| **Unit tests** | **821 passing**, across 22 files |
+| **End-to-end tests** | **41 passing**, against a production build, axe included |
 | **Hand-written migrations** | 10 (+ `migration_lock.toml`), none by `db push` |
 | **Database-enforced invariants** | 3 `EXCLUDE` constraints, 1 partial unique index, 1 append-only trigger, plus CHECKs on every enumerated column |
-| **Documentation** | 2,612 lines across the PRD, backlog, PROGRESS, release notes, the demo script and this file |
-| **Defects recorded** | 30 — 16 found while building, of which **3 by mutating the code before commit**, 2 by running CI's drift check locally, and 1 at a schema review before any migration existed; plus **14 from the external code review** (V-015), which read finished, deployed code |
-| **Defects that survived a commit** | 16. Two from the build itself, neither in shipped code — the demo script's own environment setup, and a build-only typecheck failure that could not appear until the project first deployed; both are cases where the gate runs a *different* configuration than the one that broke. The other 14 are the review's, and all of them **had shipped** — the honest number on this row, and the argument for the review being a step rather than a favour. The remaining 14 of the 30 never survived a commit |
+| **Documentation** | 3,502 lines across the PRD, backlog, PROGRESS, release notes, the demo script and this file |
+| **Defects recorded** | 34 — 20 found while building, of which **3 by mutating the code before commit**, 2 by running CI's drift check locally, and 1 at a schema review before any migration existed; plus **14 from the external code review** (V-015), which read finished, deployed code |
+| **Defects that survived a commit** | 16. Two from the build itself, neither in shipped code — the demo script's own environment setup, and a build-only typecheck failure that could not appear until the project first deployed; both are cases where the gate runs a *different* configuration than the one that broke. The other 14 are the review's, and all of them **had shipped** — the honest number on this row, and the argument for the review being a step rather than a favour. The remaining 18 of the 34 never survived a commit |
 | **Capstone service** | 18 tables · 2 combination sets · 2 service periods · 1 blackout · 60 covers booked in advance, 88 on the book, 76 seated · all 7 PRD ugly cases · 28 assertions |
 | **Double-seated tables** | 0 |
 | **Stranded parties** | 0 |
 
 Gate at close: `npm run gate` green on all five steps — lint, typecheck,
-768 unit tests (7.4s), production build, 32 e2e.
+821 unit tests across 22 files (9.4s), production build, 41 e2e (22.3s).
 
-**These figures are as of V-015 (2026-09-21), re-measured by running the suite
-rather than by editing the previous row.** Every one of them had drifted
-stale-low since the close of V-013 — the unit count by 145 — which is the
-ordinary fate of a number a human types into a table. Re-run before quoting.
+**These figures are as of V-018 (2026-09-23), re-measured by running the suite
+and counting the tree rather than by editing the previous row.** The V-015 row
+had gone stale on every count that moves: unit tests by 53, e2e by 9, commits
+by 16.
+
+**The line counts name their method now, because the V-015 row did not and
+could not be reproduced.** Application code is every tracked `.ts`, `.tsx`,
+`.css`, `.mjs`, `.sql` and `.prisma` file outside the test set; test code is
+`*.test.*`, `*.spec.*`, `e2e/` and `packages/db/testing/`. Under that rule
+V-015 measures 6,459 application lines, not the 6,505 it recorded — a 46-line
+gap in an unrecorded method, which is the whole argument for writing the
+method down. Real growth over the last three items is +938 application lines
+and +877 test lines.

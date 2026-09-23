@@ -21,8 +21,10 @@ const shots = [
   { name: '2-book-times', url: '/book?party=10&day=2026-10-02' },
   { name: '3-manage', url: `/m/${TOKEN}` },
   { name: '4-host-floor', url: '/host?day=2026-10-02' },
-  { name: '5-host-hours', url: '/host/hours' },
-  { name: '6-host-report', url: '/host/report?from=2026-10-02' },
+  { name: '5-host-board', url: '/host/board' },
+  { name: '6-host-hours', url: '/host/hours' },
+  { name: '7-host-report', url: '/host/report?from=2026-10-02' },
+  { name: '8-host-design', url: '/host/design' },
 ];
 
 const browser = await chromium.launch();

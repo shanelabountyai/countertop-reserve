@@ -1,14 +1,18 @@
 # Demo Script — Countertop Reserve
 
-How to show this project to someone in 12 minutes, screen by screen, with the
+How to show this project to someone in 15 minutes, screen by screen, with the
 exact commands, the accounts, and what to say at each stop.
 
 **There are two ways to demo this.**
 
 **Hosted** — <https://reserve.labintelligence.co>, behind one shared password
-(`grep DEMO_ACCESS_PASSWORD .env.production.local`). Send the link and the
-password; no laptop, no setup. Same seeded service as below. Use this for
-anyone remote, and for "can you show me something you built?"
+(`grep DEMO_ACCESS_PASSWORD .env.production.local` — that file, not
+`.env.local`). The browser prompt is HTTP Basic and **the username is
+ignored**; type anything. The `/host` screens then want their own passcode
+(`grep STAFF_PASSCODE .env.production.local` — the hosted one, which is not
+the local one). Send the link and both; no laptop, no setup. Same seeded
+service as below. Use this for anyone remote, and for "can you show me
+something you built?"
 
 **Local** — everything below. Still the better demo when you are *present*,
 because you can run the live webhook from a terminal and show state move. It
@@ -115,11 +119,15 @@ typing a URL on a shared screen:
 2. `http://localhost:3500/book?party=10&day=2026-10-02`
 3. `http://localhost:3500/m/<token>` — see [Credentials](#credentials)
 4. `http://localhost:3500/host?day=2026-10-02`
-5. `http://localhost:3500/host/hours`
-6. `http://localhost:3500/host/report?from=2026-10-02`
+5. `http://localhost:3500/host/board`
+6. `http://localhost:3500/host/hours`
+7. `http://localhost:3500/host/report?from=2026-10-02`
+8. `http://localhost:3500/host/design` — only if they ask about the design
 
 Tab 4 needs you to be signed in. Do that first (`/host/login`), once — the
-cookie carries across 4, 5 and 6.
+cookie carries across 4 through 8. Once you are signed in the black bar at
+the top of every staff screen has all five as tabs, so you can also just
+click rather than switch tabs.
 
 ---
 
@@ -210,8 +218,9 @@ The ones worth knowing by name:
 
 ## The demo, screen by screen
 
-Twelve minutes at a normal pace. Each stop has **what's on screen**, **what to
-say**, and **the point** — if you're short on time, the point is the part to keep.
+Fifteen minutes at a normal pace, or twelve if you skip stop 8. Each stop has
+**what's on screen**, **what to say**, and **the point** — if you're short on
+time, the point is the part to keep.
 
 ### 1 · The booking grid, and a refusal that explains itself
 `/book?party=10&day=2026-10-02` · screenshot `2-book-times.png`
@@ -275,8 +284,35 @@ flag waiting for a nightly job, that party walks out."
 **The point:** this is the one case that proves the inventory model end to end.
 It's scripted in the seed as `UGLY 7` and asserted in the capstone test.
 
-### 5 · Hours, pacing, and a guard rail
-`/host/hours` · screenshot `5-host-hours.png`
+### 5 · The table board — the invariant you can point at
+`/host/board` · screenshot `5-host-board.png`
+
+**On screen:** every unit in the house, by section, with its state in a word,
+and a free count in the black bar. Twenty units, not eighteen — the two legal
+combinations are units too, which is the whole point of the screen. The count
+itself moves with the clock, so don't quote a number you rehearsed.
+
+**Point at T16, T17 and C2.** T16 and T17 read **Blocked — taken by C2**, and
+C2 itself reads **Occupied — Table Ten A, party of 10**. Then point at C1,
+blocked the other way round: **taken by T1, T2**.
+
+**Say:** "A combination isn't a label on a screen, it's inventory. C2 *is*
+T16 plus T17 — so seating C2 takes both of those tables out of the house, and
+seating T1 and T2 separately takes C2 out. This board is read-only; it's
+showing you what the availability engine and the database constraint already
+agree on."
+
+**The point:** this is the one screen where a whole class of double-booking
+bug is visible as an absence. If combinations were a display detail, one of
+these rows would be free and a walk-in would get seated on top of a party of
+ten.
+
+Note the state words: **Free**, **Occupied**, **Reserved**, **Blocked** — all
+four legible with the colour taken away, which is the accessibility rule the
+whole UI is built on, not a retrofit.
+
+### 6 · Hours, pacing, and a guard rail
+`/host/hours` · screenshot `6-host-hours.png`
 
 **On screen:** weekly periods, per-date overrides, blackouts, pacing caps, last
 seating.
@@ -290,8 +326,8 @@ request all call it — there's no second implementation to drift."
 that's already booked, it doesn't save. It shows you who you'd strand first, and
 makes you force it."
 
-### 6 · The report, and the bug worth admitting
-`/host/report?from=2026-10-02` · screenshot `6-host-report.png`
+### 7 · The report, and the bug worth admitting
+`/host/report?from=2026-10-02` · screenshot `7-host-report.png`
 
 **On screen:** covers, no-shows, releases, waitlist conversion, in the
 restaurant's timezone.
@@ -310,6 +346,25 @@ number that tells you whether the texting is doing anything."
 
 **The point:** the same number can be right in one column and catastrophic in
 another. That's a domain judgement, not a coding one.
+
+### 8 · The design sheet — only if they ask about the look
+`/host/design` · screenshot `8-host-design.png`
+
+Skip this unless someone asks how the UI was built, or you are talking to a
+designer. It is a one-page token sheet: colour, type ramp, buttons, badges,
+callouts.
+
+**The part worth showing even in thirty seconds** is the status row —
+**all nine reservation statuses, rendered from the lifecycle module itself**,
+and the line under it: *a tenth fails to compile until it is classified and
+given its edges.*
+
+**Say:** "The lifecycle lives in one module, and this page reads it rather
+than listing it again. So this can't drift — adding a status makes the
+compiler find every reader, including this sheet."
+
+**The point:** a design system that is generated from the domain can't go
+stale. It's the same discipline as the rest of the project pointed at the UI.
 
 ---
 
@@ -342,7 +397,7 @@ npm test -- capstone        # the 28 assertions, under a second
 If they want the whole gate (~1 minute, and it builds):
 
 ```bash
-npm run gate                # lint, typecheck, 623 unit, production build, 29 e2e
+npm run gate                # lint, typecheck, 821 unit, production build, 41 e2e
 ```
 
 ---
@@ -422,7 +477,7 @@ from a stranger with `curl`.
 
 ## No-laptop version
 
-Six screenshots in `docs/screenshots/`, shot against this same seeded service.
+Eight screenshots in `docs/screenshots/`, shot against this same seeded service.
 They carry the demo on their own if you're screen-sharing a deck or sending a
 link:
 
@@ -432,8 +487,10 @@ link:
 | `2-book-times.png` | `/book?party=10&day=2026-10-02` | Every slot refused **with its reason** |
 | `3-manage.png` | `/m/<token>` | The snapshot rule — text as sent and stored |
 | `4-host-floor.png` | `/host` | `T16+T17`, a release, a no-show, a failed text |
-| `5-host-hours.png` | `/host/hours` | Pacing caps and last seating |
-| `6-host-report.png` | `/host/report` | No-shows split by confirmation |
+| `5-host-board.png` | `/host/board` | T16 and T17 **blocked, taken by C2** — a combination as inventory |
+| `6-host-hours.png` | `/host/hours` | Pacing caps and last seating |
+| `7-host-report.png` | `/host/report` | No-shows split by confirmation |
+| `8-host-design.png` | `/host/design` | All nine statuses, generated from the lifecycle module |
 
 **To reshoot after a UI change:**
 
@@ -455,9 +512,10 @@ Volunteering these reads as confidence. Having them pulled out of you doesn't.
 - **The restaurant and every guest are invented.** Synthetic on purpose.
 - **No text has ever been sent.** Carrier stubbed, outbox real, live SMS deferred
   and a stated non-goal.
-- **Not deployed anywhere, and that was a decision** — the seeded service shows
-  everything a live demo would, and a real carrier needs a public webhook URL.
-  Real SMS integration is the one thing that would reopen it.
+- **The hosted copy is a demo deployment, not production.** One shared
+  password in front of the whole site, one shared staff passcode behind it, a
+  seeded database that gets reset, and the same stubbed carrier. It proves the
+  thing runs on real infrastructure; it does not claim to be a live service.
 - **One shared staff passcode, no user accounts.** Fine for a single floor,
   wrong for a group.
 - **The report tallies in TypeScript, not SQL** — one read of a night's
