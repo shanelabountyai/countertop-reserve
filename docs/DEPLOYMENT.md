@@ -203,3 +203,15 @@ than a command you run before a demo.
 > **ponytail:** one shared password, manual reseed. Upgrade is a scheduled
 > reseed only if the drift actually becomes annoying, and per-viewer accounts
 > only if this ever holds data that matters. Neither is worth building now.
+
+## Sweep cron slowed to daily (2026-10-07, Neon cost)
+
+Shane chose this from a Neon usage review: the organisation was at $16.32 of $20 a week
+into October, and this project's database was awake about 8.5 hours a day (56 active
+hours, 15.5 compute hours since Oct 1) because `/api/cron/sweep` ran every 15 minutes
+and each run keeps the database up for five.
+
+`vercel.json` now runs it `0 14 * * *`. On the demo that means whatever the sweep
+clears is cleared once a day instead of within 15 minutes. **Restore:** `*/15 * * * *`,
+when the demo has to show the sweep acting promptly, or the project takes real bookings.
+Takes effect on the next production deployment; a push alone does not deploy here.
