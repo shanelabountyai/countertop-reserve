@@ -1,7 +1,7 @@
 // The inbound SMS webhook (P0-6): the first place a stranger can move state.
 //
-//   1. The HTTP route verifies the provider's signature over the raw body
-//      (verifySignature) and parses the payload (parseInboundPayload) before
+//   1. The HTTP route verifies the provider's signature over the timestamp
+//      and the raw body, inside a five-minute window (verifySignature) and parses the payload (parseInboundPayload) before
 //      anything here runs.
 //   2. handleInbound serializes on the sender's number (advisory lock), then
 //      checks the provider's message id BEFORE any transition — a redelivered
@@ -29,16 +29,27 @@ import {
 } from '@reserve/core';
 import { Prisma, prisma, type Reservation } from './index';
 
-/** Hex HMAC-SHA256 of the raw request body — what the provider (or the mock poster) sends in the signature header. */
-export const signBody = (raw: string, secret: string) => createHmac('sha256', secret).update(raw).digest('hex');
+/** How far a signed timestamp may be from the server's clock, either way. Stripe's default. */
+export const SIGNATURE_TOLERANCE_S = 300;
 
 /**
- * Constant-time. The signature covers the body only; a replayed signed
- * request is harmless because handling is idempotent on the message id.
+ * Hex HMAC-SHA256 of `${timestamp}.${raw}` — what the provider (or the mock
+ * poster) sends in `x-signature`, with the same `timestamp` (unix seconds) in
+ * `x-timestamp`. The timestamp is inside the MAC, so it cannot be moved.
  */
-export function verifySignature(raw: string, signature: string | null, secret: string): boolean {
-  if (!signature) return false;
-  const want = Buffer.from(signBody(raw, secret));
+export const signBody = (raw: string, timestamp: string, secret: string) =>
+  createHmac('sha256', secret).update(`${timestamp}.${raw}`).digest('hex');
+
+/**
+ * Constant-time, over the exact raw bytes AND a timestamp within
+ * SIGNATURE_TOLERANCE_S of `now` (SEC-06). The window bounds how long a
+ * captured request stays replayable; inside it, handling is idempotent on the
+ * provider's message id, so a replay changes nothing.
+ */
+export function verifySignature(raw: string, signature: string | null, timestamp: string | null, secret: string, now: Date): boolean {
+  if (!signature || !timestamp || !/^\d{1,12}$/.test(timestamp)) return false;
+  if (Math.abs(now.getTime() / 1000 - Number(timestamp)) > SIGNATURE_TOLERANCE_S) return false;
+  const want = Buffer.from(signBody(raw, timestamp, secret));
   const got = Buffer.from(signature);
   return got.length === want.length && timingSafeEqual(got, want);
 }

@@ -1,5 +1,6 @@
 // The provider's inbound-SMS webhook (P0-6). Everything a stranger sends
-// crosses here: size cap, then signature over the raw body, then payload
+// crosses here: size cap, then signature over timestamp + raw body (and a
+// five-minute timestamp window), then payload
 // validation — and only then does the handler see it.
 
 import { handleInbound, parseInboundPayload, verifySignature } from '@reserve/db/inbound';
@@ -57,12 +58,15 @@ export async function POST(req: Request) {
 
   const raw = await readBounded(req, MAX_BYTES);
   if (raw === null) return new Response('too large', { status: 413 });
-  if (!verifySignature(raw, req.headers.get('x-signature'), secret)) return new Response('bad signature', { status: 401 });
+  const now = new Date();
+  if (!verifySignature(raw, req.headers.get('x-signature'), req.headers.get('x-timestamp'), secret, now)) {
+    return new Response('bad signature', { status: 401 });
+  }
   const msg = parseInboundPayload(raw);
   if (!msg) return new Response('bad payload', { status: 400 });
 
   // The origin is the one the provider signed a request to; links in replies point back at it.
   const origin = new URL(req.url).origin;
-  const result = await handleInbound(msg, { ...RESTAURANT, manageBaseUrl: `${origin}/m`, bookUrl: `${origin}/book` }, new Date());
+  const result = await handleInbound(msg, { ...RESTAURANT, manageBaseUrl: `${origin}/m`, bookUrl: `${origin}/book` }, now);
   return Response.json(result);
 }

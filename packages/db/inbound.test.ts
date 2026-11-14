@@ -58,12 +58,30 @@ describe('the webhook boundary', () => {
   const raw = JSON.stringify({ providerMessageId: 'SM1', from: PHONE, body: 'C' });
 
   it('accepts only the exact signature, in constant time', () => {
-    const sig = signBody(raw, 'secret');
-    expect(verifySignature(raw, sig, 'secret')).toBe(true);
-    expect(verifySignature(raw, sig, 'other-secret')).toBe(false);
-    expect(verifySignature(raw.replace('"C"', '"X"'), sig, 'secret')).toBe(false); // tampered body
-    expect(verifySignature(raw, sig.slice(1), 'secret')).toBe(false); // wrong length must not throw
-    expect(verifySignature(raw, null, 'secret')).toBe(false);
+    const t = String(Math.floor(NOW.getTime() / 1000));
+    const sig = signBody(raw, t, 'secret');
+    expect(verifySignature(raw, sig, t, 'secret', NOW)).toBe(true);
+    expect(verifySignature(raw, sig, t, 'other-secret', NOW)).toBe(false);
+    expect(verifySignature(raw.replace('"C"', '"X"'), sig, t, 'secret', NOW)).toBe(false); // tampered body
+    expect(verifySignature(raw, sig.slice(1), t, 'secret', NOW)).toBe(false); // wrong length must not throw
+    expect(verifySignature(raw, null, t, 'secret', NOW)).toBe(false);
+  });
+
+  it('refuses a timestamp outside the five-minute window, or one moved off what was signed (SEC-06)', () => {
+    const t = Math.floor(NOW.getTime() / 1000);
+    const signedAt = (s: number) => signBody(raw, String(s), 'secret');
+    // Inside the window either way: still good.
+    expect(verifySignature(raw, signedAt(t - 299), String(t - 299), 'secret', NOW)).toBe(true);
+    expect(verifySignature(raw, signedAt(t + 299), String(t + 299), 'secret', NOW)).toBe(true);
+    // A capture replayed ten minutes later, correctly signed for its own time: refused.
+    expect(verifySignature(raw, signedAt(t - 600), String(t - 600), 'secret', NOW)).toBe(false);
+    expect(verifySignature(raw, signedAt(t + 600), String(t + 600), 'secret', NOW)).toBe(false);
+    // An old signature with a fresh timestamp pasted on: the MAC covers the timestamp.
+    expect(verifySignature(raw, signedAt(t - 600), String(t), 'secret', NOW)).toBe(false);
+    // Missing or malformed timestamps.
+    expect(verifySignature(raw, signedAt(t), null, 'secret', NOW)).toBe(false);
+    expect(verifySignature(raw, signBody(raw, 'abc', 'secret'), 'abc', 'secret', NOW)).toBe(false);
+    expect(verifySignature(raw, signBody(raw, `${t}.5`, 'secret'), `${t}.5`, 'secret', NOW)).toBe(false);
   });
 
   it.each([

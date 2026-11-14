@@ -250,9 +250,11 @@ first project's own record of it.
   lock serializes a number's messages. A host↔guest thread (P1-5) would
   want a real conversation model.
 - **The webhook signature covers the body, not the URL** (V-007). Twilio
-  signs the full URL plus the parameters. The mock provider signs the raw
-  body. Replaying a captured request is harmless, because handling is
-  idempotent on the provider's message id. The real adapter (P2) brings
+  signs the full URL plus the parameters. The mock provider signs
+  `timestamp.body` and the route refuses a timestamp more than five minutes
+  off (SEC-06, scorecard fixes 2026-11-13), so a captured request is only
+  replayable inside that window — and there it is harmless, because handling
+  is idempotent on the provider's message id. The real adapter (P2) brings
   the provider's own scheme.
 - **The deadline sweep is a polled cron route** (V-008). Release accuracy
   is the sweep interval: at every 5 minutes, a table frees up to 5 minutes
