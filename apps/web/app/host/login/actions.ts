@@ -3,20 +3,19 @@
 // Only async function exports live in a 'use server' file.
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { safeNext, sameToken, staffPasscode, staffToken, STAFF_COOKIE, STAFF_COOKIE_MAX_AGE } from '@/lib/staff-auth';
+import { decideStaffSignIn } from '@/lib/staff-signin';
+import { clientIp } from '@/lib/rate';
+import { safeNext, STAFF_COOKIE, STAFF_COOKIE_MAX_AGE } from '@/lib/staff-auth';
 
 export async function signIn(formData: FormData): Promise<void> {
-  const passcode = staffPasscode();
   const next = safeNext(formData.get('next')?.toString());
-  // Not a wrong passcode — a deployment with none set. Saying so saves an afternoon.
-  if (passcode === '') redirect('/host/login?error=unset');
-
-  // Both sides hashed, so `sameToken` compares two fixed-length digests in constant time.
-  const token = await staffToken(passcode);
-  if (!sameToken(await staffToken(formData.get('passcode')?.toString() ?? ''), token)) {
-    redirect(`/host/login?error=wrong&next=${encodeURIComponent(next)}`);
+  // Wrong passcodes are counted per client in Postgres (K5 / SEC-01); see staff-signin.ts.
+  const decision = await decideStaffSignIn(formData.get('passcode')?.toString() ?? '', await clientIp(), new Date());
+  if (!decision.ok) {
+    if (decision.reason === 'unset') redirect('/host/login?error=unset');
+    redirect(`/host/login?error=${decision.reason}&next=${encodeURIComponent(next)}`);
   }
-  (await cookies()).set(STAFF_COOKIE, token, {
+  (await cookies()).set(STAFF_COOKIE, decision.token, {
     httpOnly: true,
     sameSite: 'lax',
     path: '/host',

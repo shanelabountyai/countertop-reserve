@@ -29,7 +29,7 @@ test.beforeAll(async () => {
   assertDisposableTestDatabase();
   await db.connect();
   await db.query(`TRUNCATE TABLE "OutboundMessage", "ReservationEvent", "InboundMessage", "SmsOptOut", "TableHold", "Reservation",
-    "CombinationMember", "Combination", "DiningTable" RESTART IDENTITY CASCADE`);
+    "CombinationMember", "Combination", "DiningTable", "RateLimit" RESTART IDENTITY CASCADE`);
   await db.query(`TRUNCATE TABLE "ServicePeriod", "Blackout"`);
   await db.query(`INSERT INTO "ServicePeriod" ("id", "weekday", "name", "openMinute", "closeMinute", "lastSeatingMinute", "pacingCap")
     SELECT gen_random_uuid(), d, 'Dinner', 1020, 1320, 1245, 20 FROM generate_series(0, 6) AS d`);

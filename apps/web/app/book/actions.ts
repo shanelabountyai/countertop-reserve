@@ -14,6 +14,7 @@ import { redirect } from 'next/navigation';
 import { TAG_KINDS } from '@reserve/core';
 import { placeReservation } from '@reserve/db/placement';
 import { CONSENT, isDay, guestConfig, parseParty, parseSlot } from '@/lib/guest';
+import { allow } from '@/lib/rate';
 import { RESTAURANT } from '@/lib/restaurant';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -34,6 +35,8 @@ export async function book(f: FormData): Promise<void> {
     return redirect(`/book?${q}`);
   };
 
+  // Per-client limit in Postgres (K5 / SEC-01): a script cannot fill the night with junk bookings.
+  if (!(await allow('book', now))) return back('busy');
   if (party === null) return back('too_large');
   const startAt = parseSlot(day, field(f, 'at'), RESTAURANT.timezone);
   if (startAt === null) return back('closed');

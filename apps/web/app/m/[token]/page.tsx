@@ -17,6 +17,7 @@ import { SlotGrid } from '../../slot-grid';
 import { cancel, change, confirm } from './actions';
 import { isDay, MAX_PARTY, clock, guestConfig, parseParty, parseSlot } from '@/lib/guest';
 import { RESTAURANT } from '@/lib/restaurant';
+import { allow } from '@/lib/rate';
 
 export const metadata = { title: 'Your reservation — Firebird Kitchen' };
 export const dynamic = 'force-dynamic';
@@ -25,6 +26,7 @@ const TZ = RESTAURANT.timezone;
 
 /** Fixed text per code: a URL can pick one, never write one. */
 const NOTICES: Record<string, string> = {
+  busy: 'Too many changes from this connection just now. Please wait a few minutes and try again, or call us.',
   booked: "You're booked. We've texted you the details if you asked us to.",
   changed: 'Your reservation has been moved.',
   unchanged: 'That is already your reservation — nothing changed.',
@@ -84,6 +86,16 @@ export default async function ManagePage({
   };
 
   const now = new Date();
+  // Per-client limit in Postgres (K5 / SEC-01), before the token is looked up:
+  // generous for a guest, a wall for anyone walking the token space.
+  if (!(await allow('manage', now))) {
+    return (
+      <main className="mx-auto max-w-2xl bg-surface p-6 text-lg text-stone-900">
+        <h1 className="font-display text-3xl font-bold">Too many requests</h1>
+        <p role="alert" className="mt-4">This connection has opened reservation links too often. Please wait a few minutes and try again, or call us.</p>
+      </main>
+    );
+  }
   const r = await loadManage(token, now);
   if (!r) notFound();
 

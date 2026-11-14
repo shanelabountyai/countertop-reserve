@@ -26,6 +26,8 @@
     "./schedule": "./schedule.ts",
     "./guest": "./guest.ts",
     "./report": "./report.ts",
+    "./rate-limit": "./rate-limit.ts",
+    "./testing": "./testing/index.ts",
     "./testing/identity": "./testing/identity.ts"
   }
 }
