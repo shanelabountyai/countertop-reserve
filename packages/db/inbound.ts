@@ -1,8 +1,8 @@
 // The inbound SMS webhook (P0-6): the first place a stranger can move state.
 //
 //   1. The HTTP route verifies the provider's signature over the timestamp
-//      and the raw body, inside a five-minute window (verifySignature) and parses the payload (parseInboundPayload) before
-//      anything here runs.
+//      and the raw body, inside a five-minute window (verifySignature), and
+//      parses the payload (parseInboundPayload) before anything here runs.
 //   2. handleInbound serializes on the sender's number (advisory lock), then
 //      checks the provider's message id BEFORE any transition — a redelivered
 //      webhook returns what the first delivery did and changes nothing. The
