@@ -28,6 +28,19 @@ describe('security headers', () => {
     expect(h['Referrer-Policy']).toBe('strict-origin-when-cross-origin');
   });
 
+  it('the manage link sends no referrer, is never cached and never indexed (K6)', async () => {
+    for (const path of ['/m/AAAAAAAAAAAAAAAAAAAAAA', '/m/AAAAAAAAAAAAAAAAAAAAAA/anything']) {
+      const h = await headersFor(path);
+      expect(h['Referrer-Policy']).toBe('no-referrer');
+      expect(h['Cache-Control']).toContain('no-store');
+      expect(h['X-Robots-Tag']).toContain('noindex');
+      expect(h['Content-Security-Policy']).toContain("frame-ancestors 'none'"); // the global set still applies
+    }
+    // Only the manage link: the booking flow keeps the global policy.
+    expect((await headersFor('/book'))['Referrer-Policy']).toBe('strict-origin-when-cross-origin');
+    expect((await headersFor('/menu'))['Cache-Control']).toBeUndefined();
+  });
+
   it('does not advertise the framework', () => {
     expect(config.poweredByHeader).toBe(false);
   });

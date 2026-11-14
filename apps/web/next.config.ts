@@ -29,7 +29,21 @@ const nextConfig: NextConfig = {
 
   poweredByHeader: false,
 
-  headers: async () => [{ source: "/:path*", headers: securityHeaders }],
+  headers: async () => [
+    { source: "/:path*", headers: securityHeaders },
+    // The manage link (scorecard K6 / SEC-03). The token in the path is the
+    // guest's whole credential: it must never leave in a Referer header, sit
+    // in a shared cache, or be indexed. Listed last, so its Referrer-Policy
+    // overrides the global one.
+    {
+      source: "/m/:path*",
+      headers: [
+        { key: "Referrer-Policy", value: "no-referrer" },
+        { key: "X-Robots-Tag", value: "noindex, nofollow" },
+        { key: "Cache-Control", value: "private, no-store, max-age=0" },
+      ],
+    },
+  ],
 };
 
 export default nextConfig;

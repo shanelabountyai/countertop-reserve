@@ -165,6 +165,11 @@ test('cancelling hands the table straight back to inventory', async ({ page }) =
 
 test('a token we could not have minted is a 404, the same as one that never existed', async ({ page }) => {
   expect((await page.goto('/m/AAAAAAAAAAAAAAAAAAAAAA'))?.status()).toBe(404);
+  // Scorecard K6: the token page leaks its URL nowhere — no Referer, no cache, no index.
+  const h = (await page.request.get(`/m/${token}`)).headers();
+  expect(h['referrer-policy']).toBe('no-referrer');
+  expect(h['cache-control']).toContain('no-store');
+  expect(h['x-robots-tag']).toContain('noindex');
   expect((await page.goto('/m/not-a-token'))?.status()).toBe(404);
 });
 
