@@ -1,7 +1,8 @@
 'use server';
 
 // Editing the hours (P0-10). Same shape as the floor's taps: a plain form
-// POST, behind the /host passcode gate (middleware.ts), with the outcome
+// POST, behind the /host passcode gate (middleware.ts) and its own
+// requireStaff() check (K3), with the outcome
 // travelling back as a notice CODE so a crafted link cannot put words on the
 // host's screen.
 //
@@ -11,10 +12,12 @@
 // confirms. Nothing is written until they do.
 import { redirect } from 'next/navigation';
 import { editSchedule } from '@reserve/db/schedule';
+import { requireStaff } from '@/lib/require-staff';
 import { RESTAURANT } from '@/lib/restaurant';
 import { FIELDS, parseEdit } from './edit';
 
 export async function edit(f: FormData): Promise<void> {
+  await requireStaff();
   const parsed = parseEdit((name) => f.get(name)?.toString() ?? '');
   if (!parsed) redirect('/host/hours?notice=invalid');
 

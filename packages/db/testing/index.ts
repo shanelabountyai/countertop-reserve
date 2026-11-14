@@ -22,7 +22,8 @@ async function truncateAll(): Promise<void> {
       "OutboundMessage", "ReservationEvent", "InboundMessage", "SmsOptOut",
       "ServicePeriod", "Blackout",
       "TableHold", "Reservation",
-      "CombinationMember", "Combination", "DiningTable"
+      "CombinationMember", "Combination", "DiningTable",
+      "RateLimit"
     RESTART IDENTITY CASCADE
   `);
 }

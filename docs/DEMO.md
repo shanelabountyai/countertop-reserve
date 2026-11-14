@@ -429,9 +429,10 @@ rather than retyping it:
 ```bash
 SECRET=$(grep '^SMS_WEBHOOK_SECRET=' .env.local | cut -d= -f2-)
 BODY='{"providerMessageId":"demo-1","from":"+15035550114","body":"C"}'
-SIG=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "$SECRET" -hex | awk '{print $NF}')
+TS=$(date +%s)
+SIG=$(printf '%s.%s' "$TS" "$BODY" | openssl dgst -sha256 -hmac "$SECRET" -hex | awk '{print $NF}')
 curl -s -X POST http://localhost:3500/api/sms/inbound \
-  -H 'content-type: application/json' -H "x-signature: $SIG" -d "$BODY"
+  -H 'content-type: application/json' -H "x-timestamp: $TS" -H "x-signature: $SIG" -d "$BODY"
 ```
 
 Verified output:
@@ -441,6 +442,10 @@ Verified output:
 ```
 
 Yardley Cole flips to `confirmed` on the floor.
+
+The signature covers `"$TS.$BODY"`, and a timestamp more than five minutes
+from the server's clock is refused, so a captured request cannot be replayed
+forever (SEC-06).
 
 **Two follow-ups that make the point better than the happy path.** Re-run the
 identical command — same `providerMessageId`:

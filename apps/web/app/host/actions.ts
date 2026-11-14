@@ -2,14 +2,15 @@
 
 // The host's taps (P0-9). Each is a plain form POST to a server action, so it
 // works before hydration and sits behind the /host passcode gate
-// (middleware.ts). The outcome travels back as a notice CODE in the URL; the
-// page maps codes to fixed text, so a crafted link can never put words on
-// the host's screen.
+// (middleware.ts) — and each one checks for itself too (requireStaff, K3).
+// The outcome travels back as a notice CODE in the URL; the page maps codes
+// to fixed text, so a crafted link can never put words on the host's screen.
 import { randomUUID } from 'node:crypto';
 import { redirect } from 'next/navigation';
 import { dayOf, isCalendarDay, STATUSES, type Status } from '@reserve/core';
 import { addWalkIn, assignUnit, hostMove, tableReady, undoLast } from '@reserve/db/floor';
 import { mockProvider } from '@reserve/db/messages';
+import { requireStaff } from '@/lib/require-staff';
 import { RESTAURANT } from '@/lib/restaurant';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -28,6 +29,7 @@ const rowId = (f: FormData) => {
 };
 
 export async function move(f: FormData): Promise<void> {
+  await requireStaff();
   const id = rowId(f);
   const to = field(f, 'to');
   if (!(STATUSES as readonly string[]).includes(to)) back(f, 'no_edge');
@@ -42,6 +44,7 @@ export async function move(f: FormData): Promise<void> {
  * honest refusal rather than two different ones.
  */
 export async function assign(f: FormData): Promise<void> {
+  await requireStaff();
   const id = rowId(f);
   const unit = field(f, 'unit');
   const r = await assignUnit(id, unit, RESTAURANT, new Date());
@@ -49,17 +52,20 @@ export async function assign(f: FormData): Promise<void> {
 }
 
 export async function undo(f: FormData): Promise<void> {
+  await requireStaff();
   const r = await undoLast(rowId(f), RESTAURANT, new Date());
   back(f, r.ok ? 'undone' : r.reason);
 }
 
 export async function ready(f: FormData): Promise<void> {
+  await requireStaff();
   // ponytail: the mock carrier (P0-5 "mock in v1"), same as the sweep route.
   const r = await tableReady(rowId(f), mockProvider().provider, RESTAURANT, new Date());
   back(f, r.ok ? (r.sent ? 'ready_sent' : 'ready_not_sent') : r.reason);
 }
 
 export async function walkIn(f: FormData): Promise<void> {
+  await requireStaff();
   const now = new Date();
   const partySize = Number(field(f, 'partySize'));
   if (!Number.isInteger(partySize) || partySize < 1 || partySize > 50) back(f, 'invalid_party');

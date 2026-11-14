@@ -30,7 +30,7 @@ test.beforeAll(async () => {
   assertDisposableTestDatabase();
   await db.connect();
   await db.query(`TRUNCATE TABLE "OutboundMessage", "ReservationEvent", "InboundMessage", "SmsOptOut", "TableHold", "Reservation",
-    "CombinationMember", "Combination", "DiningTable" RESTART IDENTITY CASCADE`);
+    "CombinationMember", "Combination", "DiningTable", "RateLimit" RESTART IDENTITY CASCADE`);
   for (const p of PARTIES) {
     // 19:00 and 19:15 America/Los_Angeles, written as the instants they are.
     const { rows } = await db.query(

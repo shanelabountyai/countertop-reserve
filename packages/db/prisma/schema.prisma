@@ -277,3 +277,15 @@ model SmsOptOut {
   phone String   @id
   at    DateTime @db.Timestamptz(3)
 }
+
+/// Fixed-window attempt counters (scorecard K5 / SEC-01): staff sign-in
+/// failures, guest bookings and manage-link reads, per hashed client address.
+/// Shared by every instance, unlike memory. Swept by the cron route a day
+/// after the window ends.
+model RateLimit {
+  key         String
+  windowStart DateTime @db.Timestamptz(3)
+  count       Int      @default(0)
+
+  @@id([key, windowStart])
+}
