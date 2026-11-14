@@ -6,6 +6,7 @@
 // tally in a template is a second source of truth.
 import { dayOf, isCalendarDay, LEAD_BANDS, type Rate } from '@reserve/core';
 import { loadReport } from '@reserve/db/report';
+import { requireStaff } from '@/lib/require-staff';
 import { RESTAURANT } from '@/lib/restaurant';
 import { Chrome } from '../chrome';
 import { hhmm } from '../hours/edit';
@@ -32,6 +33,8 @@ function Percent({ rate }: { rate: Rate }) {
 type Params = Record<string, string | string[] | undefined>;
 
 export default async function ReportPage({ searchParams }: { searchParams: Promise<Params> }) {
+  // Second layer behind the middleware (K3 / SEC-07): the page checks for itself.
+  await requireStaff();
   const params = await searchParams;
   const get = (name: string) => {
     const v = params[name];

@@ -9,10 +9,10 @@
 //    the path it was rendered on — so matching the route matches the writes
 //    too, and a new action cannot forget to be protected.
 //
-// ponytail: route-layer, so an action imported into a page OUTSIDE /host
-// would bypass guard 2. Nothing does; host.spec.ts asserts the POST is
-// refused. The upgrade is a requireStaff() inside that action, not a second
-// matcher.
+// Guard 2 is no longer the only layer: every /host page and server action
+// also calls requireStaff() itself (scorecard K3, SEC-07), so an action
+// imported into a page OUTSIDE /host still refuses. host.spec.ts asserts the
+// POST is refused; lib/require-staff.test.ts asserts every export checks.
 import { NextResponse, type NextRequest } from 'next/server';
 import { isStaff, STAFF_COOKIE } from '@/lib/staff-auth';
 import { demoChallenge } from '@/lib/demo-gate';

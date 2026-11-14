@@ -10,6 +10,7 @@
 // prevent.
 import { dayOf, DEFAULT_BOARD_HORIZON_MINUTES, whenSlots, type TableStateRow } from '@reserve/core';
 import { floorCursor, loadBoard } from '@reserve/db/floor';
+import { requireStaff } from '@/lib/require-staff';
 import { RESTAURANT } from '@/lib/restaurant';
 import { Chrome } from '../chrome';
 import { STATE, TABLE_STATES } from '../table-state';
@@ -23,6 +24,8 @@ const time = (at: Date) => whenSlots(at, TZ).time;
 const minutesSince = (from: Date, now: Date) => Math.max(0, Math.floor((now.getTime() - from.getTime()) / 60_000));
 
 export default async function BoardPage() {
+  // Second layer behind the middleware (K3 / SEC-07): the page checks for itself.
+  await requireStaff();
   const now = new Date();
   const day = dayOf(now, TZ);
   const [rows, cursor] = await Promise.all([loadBoard(day, RESTAURANT, now), floorCursor()]);
