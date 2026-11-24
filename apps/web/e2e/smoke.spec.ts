@@ -19,3 +19,16 @@ test('the landing page has no detectable accessibility violations', async ({ pag
     .analyze();
   expect(results.violations).toEqual([]);
 });
+
+// Scorecard K7 / SEC-05: the built app sends the security headers on every
+// response, pages and the sign-in alike.
+test('every response carries the security headers', async ({ request }) => {
+  for (const path of ['/', '/book', '/host/login']) {
+    const h = (await request.get(path, { maxRedirects: 0 })).headers();
+    expect(h['x-content-type-options'], path).toBe('nosniff');
+    expect(h['content-security-policy'], path).toContain("frame-ancestors 'none'");
+    expect(h['x-frame-options'], path).toBe('DENY');
+    expect(h['referrer-policy'], path).toBe('strict-origin-when-cross-origin');
+    expect(h['strict-transport-security'], path).toContain('max-age=');
+  }
+});

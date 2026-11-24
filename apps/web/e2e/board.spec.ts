@@ -20,7 +20,7 @@ test.beforeAll(async () => {
   assertDisposableTestDatabase();
   await db.connect();
   await db.query(`TRUNCATE TABLE "OutboundMessage", "ReservationEvent", "InboundMessage", "SmsOptOut", "TableHold", "Reservation",
-    "CombinationMember", "Combination", "DiningTable" RESTART IDENTITY CASCADE`);
+    "CombinationMember", "Combination", "DiningTable", "RateLimit" RESTART IDENTITY CASCADE`);
   // Two deuces in `window` that combine into a four; a four-top in `main`.
   await db.query(`INSERT INTO "DiningTable" (id, seats, "minParty", section) VALUES ('T1', 2, 1, 'window'), ('T2', 2, 1, 'window'), ('T3', 4, 2, 'main')`);
   await db.query(`INSERT INTO "Combination" (id, seats, "minParty") VALUES ('C12', 4, 3)`);

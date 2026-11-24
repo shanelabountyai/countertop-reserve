@@ -23,7 +23,7 @@ test.beforeAll(async () => {
   assertDisposableTestDatabase();
   await db.connect();
   await db.query(`TRUNCATE TABLE "OutboundMessage", "ReservationEvent", "InboundMessage", "SmsOptOut", "TableHold", "Reservation",
-    "CombinationMember", "Combination", "DiningTable" RESTART IDENTITY CASCADE`);
+    "CombinationMember", "Combination", "DiningTable", "RateLimit" RESTART IDENTITY CASCADE`);
   await db.query(`TRUNCATE TABLE "ServicePeriod", "Blackout"`);
   // Dinner 17:00–22:00 with a cap high enough that pacing is never the thing
   // under test here — the engine's asymmetry is asserted in the db suite.

@@ -11,20 +11,26 @@
 import { redirect } from 'next/navigation';
 import { guestCancel, guestChange, guestConfirm } from '@reserve/db/guest';
 import { guestConfig, parseParty, parseSlot } from '@/lib/guest';
+import { allow } from '@/lib/rate';
 import { RESTAURANT } from '@/lib/restaurant';
 
 const TOKEN = /^[\w-]{22}$/;
 const field = (f: FormData, name: string) => f.get(name)?.toString() ?? '';
 
-/** The token, or straight to the 404 the page gives an unknown one. */
-function tokenOf(f: FormData): string {
+/**
+ * The token, or straight to the 404 the page gives an unknown one. Counted
+ * against the client's manage-link limit (K5 / SEC-01) before anything reads
+ * the database by token.
+ */
+async function tokenOf(f: FormData): Promise<string> {
   const token = field(f, 'token');
   if (!TOKEN.test(token)) redirect('/book');
+  if (!(await allow('manage', new Date()))) redirect(`/m/${token}?notice=busy`);
   return token;
 }
 
 export async function change(f: FormData): Promise<void> {
-  const token = tokenOf(f);
+  const token = await tokenOf(f);
   const now = new Date();
   const day = field(f, 'day');
   const party = parseParty(field(f, 'party'));
@@ -38,7 +44,7 @@ export async function change(f: FormData): Promise<void> {
 }
 
 export async function cancel(f: FormData): Promise<void> {
-  const token = tokenOf(f);
+  const token = await tokenOf(f);
   const result = await guestCancel(token, new Date(), await guestConfig());
   redirect(`/m/${token}?notice=${result.ok ? 'cancelled' : result.reason}`);
 }
@@ -49,7 +55,7 @@ export async function cancel(f: FormData): Promise<void> {
  * `C` reply does not exist because the confirmation request never went out.
  */
 export async function confirm(f: FormData): Promise<void> {
-  const token = tokenOf(f);
+  const token = await tokenOf(f);
   const result = await guestConfirm(token, new Date(), await guestConfig());
   redirect(`/m/${token}?notice=${result.ok ? 'confirmed' : result.reason}`);
 }

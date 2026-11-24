@@ -4,6 +4,7 @@
 
 import { timingSafeEqual } from 'node:crypto';
 import { mockProvider } from '@reserve/db/messages';
+import { sweepRateLimits } from '@reserve/db/rate-limit';
 import { sweep } from '@reserve/db/sweep';
 import { RESTAURANT } from '@/lib/restaurant';
 
@@ -17,6 +18,9 @@ export async function GET(req: Request) {
 
   const origin = new URL(req.url).origin;
   // ponytail: the mock carrier (P0-5 "mock in v1"); a real one is a swap behind MessageProvider.
-  const result = await sweep(mockProvider().provider, { ...RESTAURANT, manageBaseUrl: `${origin}/m`, bookUrl: `${origin}/book` }, new Date());
+  const now = new Date();
+  const result = await sweep(mockProvider().provider, { ...RESTAURANT, manageBaseUrl: `${origin}/m`, bookUrl: `${origin}/book` }, now);
+  // Rate-limit counters (K5) whose window ended over a day ago. Not in the response: its shape is the sweep's.
+  await sweepRateLimits(now);
   return Response.json(result);
 }

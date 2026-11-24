@@ -25,6 +25,7 @@ const TZ = RESTAURANT.timezone;
 
 /** Fixed text per code: a URL can pick one, never write one. */
 const NOTICES: Record<string, string> = {
+  busy: 'Too many bookings from this connection just now. Please wait a few minutes and try again, or call us.',
   no_longer_available: 'That table went while you were filling this in. Please pick another time.',
   full: 'That time filled up. Please pick another.',
   invalid_day: 'That is not a real date. Please pick again.',

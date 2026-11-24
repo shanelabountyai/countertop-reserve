@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { allows, dayOf, holdsTables, isCalendarDay, minuteOfDay, periodAt, periodsFor, whenSlots, type PlanUnit, type Status } from '@reserve/core';
 import { floorCursor, loadFloor, loadUnits, WAITLIST_CONSENT, type FloorRow } from '@reserve/db/floor';
 import { loadSchedule } from '@reserve/db/schedule';
+import { requireStaff } from '@/lib/require-staff';
 import { RESTAURANT } from '@/lib/restaurant';
 import { Notice } from '../notice';
 import { assign, move, ready, undo, walkIn } from './actions';
@@ -87,6 +88,8 @@ const minutesSince = (from: Date, now: Date) => Math.max(0, Math.floor((now.getT
 const time = (at: Date) => whenSlots(at, TZ).time;
 
 export default async function HostPage({ searchParams }: { searchParams: Promise<{ day?: string; notice?: string }> }) {
+  // Second layer behind the middleware (K3 / SEC-07): the page checks for itself.
+  await requireStaff();
   const { day: dayParam, notice } = await searchParams;
   const now = new Date();
   const today = dayOf(now, TZ);

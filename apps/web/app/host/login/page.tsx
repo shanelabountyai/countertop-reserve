@@ -33,6 +33,9 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         </form>
       )}
       {error === 'wrong' ? <p role="alert" className="mt-4 font-bold text-red-700">That passcode is not right.</p> : null}
+      {error === 'throttled' ? (
+        <p role="alert" className="mt-4 font-bold text-red-700">Too many wrong passcodes from this device. Wait 15 minutes and try again.</p>
+      ) : null}
       {error === 'unset' ? <p role="alert" className="mt-4 font-bold text-red-700">No passcode is configured on this server.</p> : null}
     </main>
   );

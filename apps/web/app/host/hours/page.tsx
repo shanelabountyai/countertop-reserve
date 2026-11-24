@@ -7,6 +7,7 @@
 // the URL and being re-checked against the live rows on the way back.
 import { minuteOfDay } from '@reserve/core';
 import { editSchedule, loadScheduleRows } from '@reserve/db/schedule';
+import { requireStaff } from '@/lib/require-staff';
 import { RESTAURANT } from '@/lib/restaurant';
 import { Notice } from '../../notice';
 import { edit } from './actions';
@@ -29,6 +30,8 @@ const NOTICES: Record<string, string> = {
 type Params = Record<string, string | string[] | undefined>;
 
 export default async function HoursPage({ searchParams }: { searchParams: Promise<Params> }) {
+  // Second layer behind the middleware (K3 / SEC-07): the page checks for itself.
+  await requireStaff();
   const params = await searchParams;
   const get = (name: string) => {
     const v = params[name];

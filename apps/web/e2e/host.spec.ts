@@ -21,7 +21,7 @@ test.beforeAll(async () => {
   assertDisposableTestDatabase();
   await db.connect();
   await db.query(`TRUNCATE TABLE "OutboundMessage", "ReservationEvent", "InboundMessage", "SmsOptOut", "TableHold", "Reservation",
-    "CombinationMember", "Combination", "DiningTable" RESTART IDENTITY CASCADE`);
+    "CombinationMember", "Combination", "DiningTable", "RateLimit" RESTART IDENTITY CASCADE`);
   await db.query(`INSERT INTO "DiningTable" (id, seats, "minParty", section) VALUES ('T1', 2, 1, 'main'), ('T2', 2, 1, 'main'), ('T3', 4, 2, 'main')`);
   // Two parties for 30 minutes ago: Ana (allergy, unconfirmed) on T1, Bo
   // (occasion, confirmed, but the confirmation never reached them) on T2.

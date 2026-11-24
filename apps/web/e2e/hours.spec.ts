@@ -22,7 +22,7 @@ test.beforeAll(async () => {
 });
 
 test.beforeEach(async () => {
-  await db.query(`TRUNCATE TABLE "OutboundMessage", "ReservationEvent", "InboundMessage", "SmsOptOut", "TableHold", "Reservation" RESTART IDENTITY CASCADE`);
+  await db.query(`TRUNCATE TABLE "OutboundMessage", "ReservationEvent", "InboundMessage", "SmsOptOut", "TableHold", "Reservation", "RateLimit" RESTART IDENTITY CASCADE`);
   await db.query(`TRUNCATE TABLE "ServicePeriod", "Blackout"`);
   // Firebird's own hours, as the migration seeds them: Lunch every day, and a
   // Dinner that declares an explicit last seating.
